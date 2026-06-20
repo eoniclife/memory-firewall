@@ -97,7 +97,8 @@ private orchestration layer
 - normalization of high-signal Hermes memory write attempts into `MemoryEvent`
   records;
 - local detector/policy scan over those Hermes-derived `MemoryEvent` records;
-- local Hermes diagnostics JSONL for normalized events and observations;
+- local Hermes diagnostics JSONL for normalized events and observations, created
+  or tightened with user-only local file permissions;
 - `memory-firewall hermes status --json`;
 - machine-readable `hermes-status` schema;
 - opt-in turn-level scanning for implicit memory providers via
@@ -453,6 +454,11 @@ Firewall scan/detector policy, and writes local JSONL diagnostics:
 
 - `events.jsonl`;
 - `observations.jsonl`.
+
+The diagnostics directory is created or tightened to user-only permissions, and
+both diagnostics files are created or tightened to owner-read/write
+permissions. These files may contain raw candidate memory text, so the status
+CLI summarizes counts and levels without printing raw event content.
 
 Turn-level scanning for implicit provider writes is disabled by default because
 it can be noisy. It is enabled only when

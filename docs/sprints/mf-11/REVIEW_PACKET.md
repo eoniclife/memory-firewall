@@ -59,7 +59,8 @@ For observed write attempts, it:
 
 - creates canonical `MemoryEvent` records;
 - runs the existing local scan/detector/state-analysis path;
-- appends local `events.jsonl` and `observations.jsonl`;
+- appends local `events.jsonl` and `observations.jsonl` with user-only local
+  file permissions;
 - summarizes local state through `memory-firewall hermes status`.
 
 ## Non-Goals
@@ -103,6 +104,7 @@ Not allowed:
   tool observation as memory scanning?
 - Does the CLI status output avoid raw trace leakage beyond the local
   diagnostics directory?
+- Are raw local diagnostics stored with private directory/file permissions?
 - Do docs and claim budget avoid provider replacement and enforcement claims?
 - Does the entry point packaging match Hermes plugin discovery semantics?
 
@@ -184,6 +186,51 @@ Expanded local gates:
   - `uv pip check` passed.
 
 PR URL, CI status, and exact-head review verdicts must be recorded before merge.
+
+Reviewer fix-pass:
+
+- Independent reviewer `Zeno`
+  (`019ee704-8a38-7f70-a7fd-f51cfcefb1f7`) found one P2 issue on exact head
+  `d5f414cfbf6498d0d49f361faef09aa5ca659563`: Hermes diagnostics could contain
+  raw candidate memory text while relying on default directory/file
+  permissions.
+- Fix-pass:
+  - diagnostics directories are created or tightened to `0700`;
+  - `events.jsonl` and `observations.jsonl` are created or tightened to `0600`;
+  - file permissions are applied through the open file descriptor where
+    available;
+  - status output remains summary-only and does not print raw event content;
+  - README and product contract now name the privacy boundary explicitly.
+- Fix-pass local gates:
+  - `uv run --python 3.12 --extra dev pytest tests/test_hermes.py -q`
+    - `10` passed;
+  - `uv run --python 3.12 --extra dev mypy src/memory_firewall/hermes.py tests/test_hermes.py`
+    - `Success: no issues found in 2 source files`;
+  - `uv run --python 3.12 --extra dev pytest -q`
+    - passed for the collected `159` tests;
+  - `UV_PROJECT_ENVIRONMENT=.venv-310-mypy uv run --python 3.10 --extra dev mypy src tests`
+    - `Success: no issues found in 36 source files`;
+  - `UV_PROJECT_ENVIRONMENT=.venv-311-mypy uv run --python 3.11 --extra dev mypy src tests`
+    - `Success: no issues found in 36 source files`;
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-mypy uv run --python 3.12 --extra dev mypy src tests`
+    - `Success: no issues found in 36 source files`;
+  - `uv run --python 3.12 --extra dev python -m compileall -q src tests`;
+  - `git diff --check`;
+  - CLI/schema/Hermes smokes:
+    - `memory-firewall doctor --json`;
+    - `memory-firewall schema bundle`;
+    - `memory-firewall schema hermes-status`;
+    - `memory-firewall hermes status --state-dir <empty-temp-dir> --json`;
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-build uv build --out-dir /tmp/memory-firewall-mf11-dist`;
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-build uv run --python 3.12 --extra dev twine check /tmp/memory-firewall-mf11-dist/*`;
+  - installed-wheel smoke on Python `3.12.11`:
+    - `memory-firewall --version` returned `0.1.0.dev11`;
+    - `memory-firewall schema hermes-status` passed;
+    - `memory-firewall hermes status --state-dir <empty-temp-dir> --json`
+      passed;
+    - `importlib.metadata.entry_points(group="hermes_agent.plugins")` loaded
+      `memory_firewall.hermes_plugin`;
+    - `uv pip check` passed.
 
 ## Residual Risks
 

@@ -1,4 +1,6 @@
 import json
+import os
+import stat
 
 from memory_firewall import (
     HERMES_INTEGRATION_VERSION,
@@ -109,6 +111,35 @@ def test_hermes_observation_persists_jsonl_and_status(tmp_path) -> None:  # type
     assert status.blocked_by_firewall == 0
     assert (tmp_path / "events.jsonl").exists()
     assert (tmp_path / "observations.jsonl").exists()
+
+
+def test_hermes_observation_files_are_private(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    os.chmod(tmp_path, 0o755)
+    events_path = tmp_path / "events.jsonl"
+    observations_path = tmp_path / "observations.jsonl"
+    events_path.write_text("", encoding="utf-8")
+    observations_path.write_text("", encoding="utf-8")
+    events_path.chmod(0o644)
+    observations_path.chmod(0o644)
+    events = memory_events_from_hermes_tool_call(
+        "memory",
+        {"action": "add", "target": "memory", "content": "Remember project Helio."},
+        timestamp="2026-06-20T15:00:00Z",
+        session_id="session-1",
+        tool_call_id="tool-1",
+        turn_id="turn-1",
+    )
+
+    record_hermes_events(
+        events,
+        hook_name="post_tool_call",
+        tool_name="memory",
+        state_dir=tmp_path,
+    )
+
+    assert stat.S_IMODE(tmp_path.stat().st_mode) == 0o700
+    assert stat.S_IMODE(events_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(observations_path.stat().st_mode) == 0o600
 
 
 def test_hermes_status_cli_reads_observation_dir(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]

@@ -114,7 +114,10 @@ memory-firewall hermes status --json
 
 By default the plugin records only high-signal memory write tool attempts.
 Diagnostics are local JSONL files under `~/.hermes/memory-firewall/`, unless
-`MEMORY_FIREWALL_HERMES_DIR` points somewhere else. Set
+`MEMORY_FIREWALL_HERMES_DIR` points somewhere else. The diagnostics directory
+is created or tightened to user-only permissions, and `events.jsonl` /
+`observations.jsonl` are created or tightened to owner-read/write permissions.
+Set
 `MEMORY_FIREWALL_HERMES_SCAN_TURNS=1` only if you want noisy turn-level
 observations for implicit memory-provider writes.
 
@@ -172,8 +175,9 @@ MF-11 adds an observe-only Hermes hook alpha. The package exposes a
 `hermes_agent.plugins` entry point named `memory-firewall` and hook handlers
 that can observe high-signal Hermes memory write attempts, normalize them into
 `MemoryEvent` records, run local scan/detector policy, and append local JSONL
-diagnostics. `memory-firewall hermes status --json` summarizes those local
-observations. Turn-level scanning for implicit memory providers is opt-in via
+diagnostics with user-only local file permissions. `memory-firewall hermes
+status --json` summarizes those local observations without printing raw event
+content. Turn-level scanning for implicit memory providers is opt-in via
 `MEMORY_FIREWALL_HERMES_SCAN_TURNS=1`. MF-11 does not replace the active Hermes
 memory provider, suppress Mem0/Honcho/GBrain writes, inject trusted context,
 write a trusted ledger, or provide production enforcement.

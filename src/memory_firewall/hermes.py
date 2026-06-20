@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import stat
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +33,8 @@ HERMES_DIR_ENV = "MEMORY_FIREWALL_HERMES_DIR"
 HERMES_SCAN_TURNS_ENV = "MEMORY_FIREWALL_HERMES_SCAN_TURNS"
 HERMES_MODE_ENV = "MEMORY_FIREWALL_HERMES_MODE"
 HERMES_DEFAULT_MODE = "observe"
+HERMES_STATE_DIR_MODE = 0o700
+HERMES_STATE_FILE_MODE = 0o600
 _MAX_EVENT_TEXT_CHARS = 16_384
 _MEMORY_TEXT_KEYS = (
     "content",
@@ -486,6 +489,33 @@ def _resolve_hermes_state_dir(state_dir: str | Path | None = None) -> Path:
     return default_hermes_state_dir()
 
 
+def _ensure_private_hermes_state_dir(output_dir: Path) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True, mode=HERMES_STATE_DIR_MODE)
+    current_mode = stat.S_IMODE(output_dir.stat().st_mode)
+    if current_mode != HERMES_STATE_DIR_MODE:
+        output_dir.chmod(HERMES_STATE_DIR_MODE)
+
+
+def _append_private_jsonl(path: Path, payload: Mapping[str, Any]) -> None:
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if isinstance(nofollow, int):
+        flags |= nofollow
+    fd = os.open(path, flags, HERMES_STATE_FILE_MODE)
+    try:
+        if stat.S_IMODE(os.fstat(fd).st_mode) != HERMES_STATE_FILE_MODE:
+            if hasattr(os, "fchmod"):
+                os.fchmod(fd, HERMES_STATE_FILE_MODE)
+            else:
+                path.chmod(HERMES_STATE_FILE_MODE)
+        with os.fdopen(fd, "a", encoding="utf-8") as handle:
+            fd = -1
+            handle.write(json.dumps(payload, sort_keys=True) + "\n")
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
 def append_hermes_observation(
     observation: HermesObservation,
     *,
@@ -494,13 +524,13 @@ def append_hermes_observation(
     """Append one local Hermes observation and its normalized event."""
 
     output_dir = _resolve_hermes_state_dir(state_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    with (output_dir / HERMES_EVENTS_FILENAME).open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(observation.event.to_dict(), sort_keys=True) + "\n")
-    with (output_dir / HERMES_OBSERVATIONS_FILENAME).open(
-        "a", encoding="utf-8"
-    ) as handle:
-        handle.write(json.dumps(observation.to_dict(), sort_keys=True) + "\n")
+    _ensure_private_hermes_state_dir(output_dir)
+    _append_private_jsonl(
+        output_dir / HERMES_EVENTS_FILENAME, observation.event.to_dict()
+    )
+    _append_private_jsonl(
+        output_dir / HERMES_OBSERVATIONS_FILENAME, observation.to_dict()
+    )
 
 
 def record_hermes_events(
