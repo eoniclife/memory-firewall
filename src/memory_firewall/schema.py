@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .adapters import AdapterCapability
+from .analysis import ANALYSIS_VERSION, TrustedStateAction
 from .claim_budget import claim_budget
 from .detectors import DETECTOR_PACK_NAME, DETECTOR_PACK_VERSION, default_detector_pack
 from .models import (
@@ -24,7 +25,7 @@ from .models import (
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-04"
+SCHEMA_VERSION = "mf-05"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -366,6 +367,184 @@ def detector_result_schema() -> dict[str, Any]:
     }
 
 
+def state_assertion_schema() -> dict[str, Any]:
+    """Return the MF-05 local state assertion schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/state-assertion.mf-05.json",
+        "title": "MemoryStateAssertion",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "assertion_id",
+            "subject",
+            "predicate",
+            "object_value",
+            "object_hash_sha256",
+            "object_redacted",
+            "source_event_id",
+            "source_authority",
+            "asserted_at",
+            "status",
+            "supersedes",
+            "metadata",
+        ],
+        "properties": {
+            "assertion_id": {"type": "string", "minLength": 1, "maxLength": 96},
+            "subject": {"type": "string", "minLength": 1, "maxLength": MAX_TEXT_FIELD_CHARS},
+            "predicate": {"type": "string", "minLength": 1, "maxLength": MAX_TEXT_FIELD_CHARS},
+            "object_value": {"type": "string", "minLength": 1, "maxLength": MAX_TEXT_FIELD_CHARS},
+            "object_hash_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "object_redacted": {"type": "boolean"},
+            "source_event_id": {"type": "string", "pattern": "^mfev_v1_[0-9a-f]{32}$"},
+            "source_authority": {"type": "string", "enum": _enum_values(SourceAuthority)},
+            "asserted_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": RFC3339_TIMESTAMP_PATTERN,
+            },
+            "status": {
+                "type": "string",
+                "enum": ["candidate", "trusted", "superseded"],
+            },
+            "supersedes": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+                "uniqueItems": True,
+            },
+            "metadata": _metadata_schema(),
+        },
+    }
+
+
+def state_analysis_schema() -> dict[str, Any]:
+    """Return the MF-05 state-analysis result schema."""
+
+    contradiction_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "existing_assertion_id",
+            "candidate_assertion_id",
+            "subject",
+            "predicate",
+            "existing_object_hash_sha256",
+            "candidate_object_hash_sha256",
+            "existing_source_authority",
+            "candidate_source_authority",
+            "existing_status",
+        ],
+        "properties": {
+            "existing_assertion_id": {"type": "string", "minLength": 1},
+            "candidate_assertion_id": {"type": "string", "minLength": 1},
+            "subject": {"type": "string", "minLength": 1},
+            "predicate": {"type": "string", "minLength": 1},
+            "existing_object_hash_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "candidate_object_hash_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "existing_source_authority": {
+                "type": "string",
+                "enum": _enum_values(SourceAuthority),
+            },
+            "candidate_source_authority": {
+                "type": "string",
+                "enum": _enum_values(SourceAuthority),
+            },
+            "existing_status": {
+                "type": "string",
+                "enum": ["candidate", "trusted", "superseded"],
+            },
+        },
+    }
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/state-analysis.mf-05.json",
+        "title": "StateAnalysisResult",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "analysis_id",
+            "analysis_version",
+            "event_id",
+            "assertion",
+            "authority_assessment",
+            "contradictions",
+            "supersession_candidate_ids",
+            "trusted_state_action",
+            "reason_codes",
+            "limitations",
+            "finding_ids",
+            "amc_mapping",
+        ],
+        "properties": {
+            "analysis_id": {"type": "string", "pattern": "^mfanalysis_v1_[0-9a-f]{32}$"},
+            "analysis_version": {"const": ANALYSIS_VERSION},
+            "event_id": {"type": "string", "pattern": "^mfev_v1_[0-9a-f]{32}$"},
+            "assertion": state_assertion_schema(),
+            "authority_assessment": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "source_authority",
+                    "rank",
+                    "can_enter_candidate_plane",
+                    "can_skip_reducer_review",
+                    "reason_codes",
+                ],
+                "properties": {
+                    "source_authority": {
+                        "type": "string",
+                        "enum": _enum_values(SourceAuthority),
+                    },
+                    "rank": {"type": "integer", "minimum": 0, "maximum": 5},
+                    "can_enter_candidate_plane": {"type": "boolean"},
+                    "can_skip_reducer_review": {"const": False},
+                    "reason_codes": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                },
+            },
+            "contradictions": {"type": "array", "items": contradiction_schema},
+            "supersession_candidate_ids": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+                "uniqueItems": True,
+            },
+            "trusted_state_action": {
+                "type": "string",
+                "enum": _enum_values(TrustedStateAction),
+            },
+            "reason_codes": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+            },
+            "limitations": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+            },
+            "finding_ids": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+                "uniqueItems": True,
+            },
+            "amc_mapping": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["source_record", "evidence_span", "candidate_claim"],
+                "properties": {
+                    "source_record": {"type": "object"},
+                    "evidence_span": {"type": "object"},
+                    "candidate_claim": {"type": "object"},
+                },
+            },
+        },
+    }
+
+
 def schema_bundle() -> dict[str, Any]:
     """Return the complete public contract bundle."""
 
@@ -380,6 +559,8 @@ def schema_bundle() -> dict[str, Any]:
         "policy_schema": policy_schema(),
         "detector_pack_schema": detector_pack_schema(),
         "detector_result_schema": detector_result_schema(),
+        "state_assertion_schema": state_assertion_schema(),
+        "state_analysis_schema": state_analysis_schema(),
         "default_detector_pack": default_detector_pack().to_dict(),
         "risk_taxonomy": [item.to_dict() for item in risk_taxonomy()],
         "claim_budget": claim_budget().to_dict(),
