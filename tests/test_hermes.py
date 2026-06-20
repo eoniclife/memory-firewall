@@ -234,6 +234,9 @@ def test_hermes_recent_observations_handles_malformed_rows_schema_safely(tmp_pat
         "\n".join(
             [
                 '{"recorded_at":"User approval token is sk-test-secret"}',
+                '{"recorded_at":"2026-06-20 15:00:00+00:00"}',
+                '{"recorded_at":"2026-06-20T15:00:00+0000"}',
+                '{"recorded_at":"2026-W25-6T15:00:00+00:00"}',
                 "{not json",
                 json.dumps(
                     {
@@ -263,7 +266,8 @@ def test_hermes_recent_observations_handles_malformed_rows_schema_safely(tmp_pat
 
     Draft202012Validator(hermes_observations_schema()).validate(payload)
     rendered = json.dumps(payload)
-    assert payload["returned_observations"] == 3
+    assert payload["total_observations"] == 6
+    assert payload["returned_observations"] == 6
     assert "raw-user-secret" not in rendered
     assert "sk-test-secret" not in rendered
     assert "User approval token" not in rendered

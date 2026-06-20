@@ -112,7 +112,8 @@ new observations command without printing raw candidate memory text.
   `uv run --python 3.12 --extra dev pytest tests/test_hermes.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
   - initial: `59` passed;
   - fix-pass after exact-head review: `61` passed;
-  - second fix-pass after timestamp / raw-derived ID review: `61` passed.
+  - second fix-pass after timestamp / raw-derived ID review: `61` passed;
+  - third fix-pass after strict timestamp-shape review: `61` passed.
 - focused type checks:
   `uv run --python 3.12 --extra dev mypy src/memory_firewall/hermes.py src/memory_firewall/cli.py src/memory_firewall/schema.py src/memory_firewall/__init__.py tests/test_hermes.py tests/test_cli.py tests/test_schema_and_taxonomy.py`
   - `Success: no issues found in 7 source files`.
@@ -185,6 +186,17 @@ Second fix-pass changes after review of
 - redacted observation summaries use `event_ref: observation-row-N`, not a
   deterministic hash over raw/proposed memory content;
 - text output prints detector names so a user can see why the row was flagged.
+
+Third fix-pass changes after review of
+`8b2d5c947e41b2925114fa798e1f5b8fdde4d587`:
+
+- `recorded_at` now has to match the same RFC3339 timestamp pattern exported in
+  the schemas before it can appear in observations or status output;
+- Python-parseable but schema-invalid timestamp shapes such as
+  `2026-06-20 15:00:00+00:00`, `2026-06-20T15:00:00+0000`, and
+  `2026-W25-6T15:00:00+00:00` collapse to `unavailable-recorded-at`;
+- status ignores those malformed timestamps rather than reporting them as
+  `latest_recorded_at`.
 
 Additional fix-pass probe:
 

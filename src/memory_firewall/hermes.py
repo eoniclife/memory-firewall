@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import stat
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -21,6 +22,7 @@ from .models import (
     JSONScalar,
     MemoryEvent,
     MemoryOperation,
+    RFC3339_TIMESTAMP_PATTERN,
     RecommendedDisposition,
     RiskCategory,
     SourceAuthority,
@@ -59,6 +61,7 @@ _SAFE_TOKEN_CHARS = frozenset(
     "0123456789"
     "._-"
 )
+_RFC3339_TIMESTAMP_RE = re.compile(RFC3339_TIMESTAMP_PATTERN)
 _SAFE_MEMORY_TARGETS = frozenset(
     (
         "default",
@@ -987,6 +990,8 @@ def _summary_mode(value: Any) -> str:
 
 def _safe_recorded_at(value: Any) -> str:
     if not isinstance(value, str) or not value:
+        return "unavailable-recorded-at"
+    if _RFC3339_TIMESTAMP_RE.fullmatch(value) is None:
         return "unavailable-recorded-at"
     normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
     try:
