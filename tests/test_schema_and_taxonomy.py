@@ -9,7 +9,9 @@ from memory_firewall import (
     RiskSeverity,
     SourceAuthority,
     SourceType,
+    adapter_capability_report_schema,
     claim_budget,
+    demo_memory_adapter,
     event_schema,
     finding_schema,
     risk_taxonomy,
@@ -38,9 +40,10 @@ def test_finding_schema_uses_frozen_risk_taxonomy() -> None:
 def test_schema_bundle_includes_claim_budget() -> None:
     bundle = schema_bundle()
     budget = claim_budget()
-    assert bundle["schema_version"] == "mf-01"
+    assert bundle["schema_version"] == "mf-02"
     assert bundle["claim_budget"]["allowed"] == list(budget.allowed)
     assert any("Does not scan real stores yet" in item for item in budget.not_allowed)
+    assert "adapter_capability_report_schema" in bundle
 
 
 def test_model_outputs_validate_against_exported_schemas() -> None:
@@ -73,5 +76,9 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
 
     Draft202012Validator.check_schema(event_schema())
     Draft202012Validator.check_schema(finding_schema())
+    Draft202012Validator.check_schema(adapter_capability_report_schema())
     Draft202012Validator(event_schema()).validate(event.to_dict())
     Draft202012Validator(finding_schema()).validate(finding.to_dict())
+    Draft202012Validator(adapter_capability_report_schema()).validate(
+        demo_memory_adapter().capability_report.to_dict()
+    )
