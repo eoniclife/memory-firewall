@@ -17,7 +17,7 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["package"] == "memory-firewall"
-    assert payload["schema_version"] == "mf-08"
+    assert payload["schema_version"] == "mf-09"
 
 
 def test_adapter_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
@@ -97,6 +97,13 @@ def test_demo_result_schema_command_prints_json(capsys) -> None:  # type: ignore
     assert payload["title"] == "PoisonDemoResult"
 
 
+def test_reference_proxy_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "reference-proxy-result"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "ReferenceProxyResult"
+
+
 def test_demo_poison_json_command(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["demo", "poison", "--json"]) == 0
     captured = capsys.readouterr()
@@ -108,6 +115,17 @@ def test_demo_poison_json_command(capsys) -> None:  # type: ignore[no-untyped-de
     assert payload["outcome"]["pending_preview_items"] == 0
     assert payload["outcome"]["rejected_preview_items"] == 0
     assert payload["outcome"]["override_preview_items"] == 1
+
+
+def test_proxy_reference_json_command(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["proxy", "reference", "--mode", "enforce", "--json"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["proxy_version"] == "mf-09"
+    assert payload["mode"] == "enforce"
+    assert payload["outcome"]["native_answer"] == "Helio"
+    assert payload["outcome"]["governed_context_answer"] == "Helio"
+    assert len(payload["outcome"]["suppressed_native_event_ids"]) == 1
 
 
 def test_risks_json_command(capsys) -> None:  # type: ignore[no-untyped-def]

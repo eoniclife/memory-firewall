@@ -23,6 +23,8 @@ from .models import (
     SourceAuthority,
     SourceType,
 )
+from .proxy import REFERENCE_PROXY_VERSION, ProxyMode
+from .reference_store import REFERENCE_CHANNEL_GOVERNED, REFERENCE_CHANNEL_NATIVE
 from .review import (
     OVERRIDE_RECEIPT_ID_PREFIX,
     REVIEW_ITEM_ID_PREFIX,
@@ -35,7 +37,7 @@ from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-08"
+SCHEMA_VERSION = "mf-09"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -1041,6 +1043,171 @@ def demo_result_schema() -> dict[str, Any]:
     }
 
 
+def _reference_memory_record_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "channel",
+            "key",
+            "value",
+            "source_event_id",
+            "source_authority",
+        ],
+        "properties": {
+            "channel": {
+                "type": "string",
+                "enum": [REFERENCE_CHANNEL_NATIVE, REFERENCE_CHANNEL_GOVERNED],
+            },
+            "key": {"type": "string", "minLength": 1},
+            "value": {"type": "string", "minLength": 1},
+            "source_event_id": {"type": "string", "pattern": "^mfev_v1_[0-9a-f]{32}$"},
+            "source_authority": {
+                "type": "string",
+                "enum": _enum_values(SourceAuthority),
+            },
+        },
+    }
+
+
+def reference_proxy_result_schema() -> dict[str, Any]:
+    """Return the MF-09 reference proxy result schema."""
+
+    write_decision_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "event_id",
+            "line_number",
+            "level",
+            "native_write",
+            "governed_context_write",
+            "reason_codes",
+            "review_item_id",
+        ],
+        "properties": {
+            "event_id": {"type": "string", "pattern": "^mfev_v1_[0-9a-f]{32}$"},
+            "line_number": {"type": "integer", "minimum": 1},
+            "level": {"type": "string", "enum": _enum_values(ScanEventLevel)},
+            "native_write": {"type": "boolean"},
+            "governed_context_write": {"type": "boolean"},
+            "reason_codes": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+            },
+            "review_item_id": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "pattern": f"^{REVIEW_ITEM_ID_PREFIX}[0-9a-f]{{32}}$",
+                    },
+                    {"type": "null"},
+                ],
+            },
+        },
+    }
+    nullable_record = {
+        "anyOf": [_reference_memory_record_schema(), {"type": "null"}],
+    }
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/reference-proxy-result.mf-09.json",
+        "title": "ReferenceProxyResult",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "proxy_version",
+            "mode",
+            "capability_report",
+            "scan_result",
+            "review_queue",
+            "trusted_read_preview",
+            "write_decisions",
+            "native_records",
+            "governed_context_records",
+            "native_read_after_writes",
+            "governed_read_after_writes",
+            "outcome",
+            "limitations",
+        ],
+        "properties": {
+            "proxy_version": {"const": REFERENCE_PROXY_VERSION},
+            "mode": {"type": "string", "enum": _enum_values(ProxyMode)},
+            "capability_report": adapter_capability_report_schema(),
+            "scan_result": scan_result_schema(),
+            "review_queue": review_queue_schema(),
+            "trusted_read_preview": trusted_read_preview_schema(),
+            "write_decisions": {
+                "type": "array",
+                "minItems": 1,
+                "items": write_decision_schema,
+            },
+            "native_records": {
+                "type": "array",
+                "items": _reference_memory_record_schema(),
+            },
+            "governed_context_records": {
+                "type": "array",
+                "items": _reference_memory_record_schema(),
+            },
+            "native_read_after_writes": nullable_record,
+            "governed_read_after_writes": nullable_record,
+            "outcome": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "mode",
+                    "native_answer",
+                    "governed_context_answer",
+                    "high_risk_events",
+                    "queued_items",
+                    "trusted_read_preview_items",
+                    "suppressed_native_event_ids",
+                    "native_record_count",
+                    "governed_context_record_count",
+                ],
+                "properties": {
+                    "mode": {"type": "string", "enum": _enum_values(ProxyMode)},
+                    "native_answer": {
+                        "anyOf": [
+                            {"type": "string", "minLength": 1},
+                            {"type": "null"},
+                        ],
+                    },
+                    "governed_context_answer": {
+                        "anyOf": [
+                            {"type": "string", "minLength": 1},
+                            {"type": "null"},
+                        ],
+                    },
+                    "high_risk_events": {"type": "integer", "minimum": 0},
+                    "queued_items": {"type": "integer", "minimum": 0},
+                    "trusted_read_preview_items": {"type": "integer", "minimum": 0},
+                    "suppressed_native_event_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "pattern": "^mfev_v1_[0-9a-f]{32}$",
+                        },
+                        "uniqueItems": True,
+                    },
+                    "native_record_count": {"type": "integer", "minimum": 0},
+                    "governed_context_record_count": {
+                        "type": "integer",
+                        "minimum": 0,
+                    },
+                },
+            },
+            "limitations": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+            },
+        },
+    }
+
+
 def schema_bundle() -> dict[str, Any]:
     """Return the complete public contract bundle."""
 
@@ -1062,6 +1229,7 @@ def schema_bundle() -> dict[str, Any]:
         "override_receipt_schema": override_receipt_schema(),
         "trusted_read_preview_schema": trusted_read_preview_schema(),
         "demo_result_schema": demo_result_schema(),
+        "reference_proxy_result_schema": reference_proxy_result_schema(),
         "default_detector_pack": default_detector_pack().to_dict(),
         "risk_taxonomy": [item.to_dict() for item in risk_taxonomy()],
         "claim_budget": claim_budget().to_dict(),
