@@ -16,6 +16,7 @@ from .conformance import run_adapter_conformance
 from .detectors import default_detector_pack, run_detectors
 from .demo import run_poison_demo
 from .doctor import doctor_report
+from .hermes import summarize_hermes_observations
 from .models import MemoryEvent
 from .policy import DISPOSITION_ORDER, SEVERITY_ORDER, PolicyConfig
 from .proxy import ProxyMode, run_reference_proxy
@@ -43,6 +44,7 @@ from .schema import (
     evidence_span_schema,
     event_schema,
     finding_schema,
+    hermes_status_schema,
     override_receipt_schema,
     policy_schema,
     reference_proxy_result_schema,
@@ -97,6 +99,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "reference-proxy-result",
             "report-result",
             "redacted-report-export",
+            "hermes-status",
             "bundle",
         ),
         help="Schema to print.",
@@ -325,6 +328,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     report_demo_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    hermes_parser = subparsers.add_parser(
+        "hermes",
+        help="Inspect the observe-only Hermes hook integration.",
+    )
+    hermes_subparsers = hermes_parser.add_subparsers(
+        dest="hermes_command",
+        required=True,
+    )
+    hermes_status_parser = hermes_subparsers.add_parser(
+        "status",
+        help="Summarize local Hermes Memory Firewall observations.",
+    )
+    hermes_status_parser.add_argument(
+        "--state-dir",
+        help="Directory containing Hermes Memory Firewall JSONL diagnostics.",
+    )
+    hermes_status_parser.add_argument("--json", action="store_true", dest="as_json")
+
     return parser
 
 
@@ -375,6 +396,8 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = report_result_schema()
     elif name == "redacted-report-export":
         payload = redacted_report_export_schema()
+    elif name == "hermes-status":
+        payload = hermes_status_schema()
     else:
         payload = schema_bundle()
     _print_json(payload, stdout)
@@ -781,6 +804,27 @@ def _run_report_demo(output_dir: str, as_json: bool, stdout: TextIO) -> int:
     return 0
 
 
+def _run_hermes_status(
+    state_dir: str | None,
+    as_json: bool,
+    stdout: TextIO,
+) -> int:
+    status = summarize_hermes_observations(state_dir=state_dir)
+    if as_json:
+        _print_json(status.to_dict(), stdout)
+    else:
+        print(f"{status.integration_version}: Hermes hook alpha", file=stdout)
+        print(f"- state dir: {status.state_dir}", file=stdout)
+        print(f"- observations: {status.total_observations}", file=stdout)
+        print(f"- high-risk: {status.high_risk_observations}", file=stdout)
+        print(f"- warn: {status.warn_observations}", file=stdout)
+        print(f"- pass: {status.pass_observations}", file=stdout)
+        print("- observe-only: true", file=stdout)
+        if status.latest_recorded_at is not None:
+            print(f"- latest: {status.latest_recorded_at}", file=stdout)
+    return 0 if status.high_risk_observations == 0 else 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the Memory Firewall CLI."""
 
@@ -895,6 +939,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sys.stdout,
             )
         parser.error(f"unknown report command: {report_command}")
+    if args.command == "hermes":
+        hermes_command = str(args.hermes_command)
+        if hermes_command == "status":
+            state_dir = None if args.state_dir is None else str(args.state_dir)
+            return _run_hermes_status(
+                state_dir,
+                bool(args.as_json),
+                sys.stdout,
+            )
+        parser.error(f"unknown hermes command: {hermes_command}")
     parser.error(f"unknown command: {args.command}")
     return 2
 

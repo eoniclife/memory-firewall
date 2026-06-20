@@ -1,8 +1,8 @@
 # Memory Firewall Product Contract
 
-MF-10 adds a local static integrity report and default redacted share export
-over the existing poisoning demo and reference proxy surfaces while keeping real
-memory-store scanning, framework adapters, trusted ledger writes, hosted
+MF-11 adds a first observe-only Hermes hook alpha over the existing scan,
+detector, review, proxy, and report surfaces while keeping broad real
+memory-store scanning, provider replacement, trusted ledger writes, hosted
 dashboards, and production enforcement claims out of scope.
 
 ## Category Line
@@ -23,15 +23,15 @@ memory-firewall
     Public contract, detector pack, AMC candidate/evidence preview, normalized
     event-stream scan/watch, local review queue, override receipts, trusted-read
     preview, poisoning demo, reference proxy, local static report, redacted
-    share export, conformance probe, and CLI shell for the future
-    inspection/demo/reference guardrail
+    share export, Hermes observe-only hook alpha, conformance probe, and CLI
+    shell for the future inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-10 Allows
+## MF-11 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -91,6 +91,19 @@ private orchestration layer
 - redacted share export that omits raw content, state-object answer values,
   event IDs, source IDs, review item IDs, and receipt IDs by default;
 - machine-readable `report-result` and `redacted-report-export` schemas;
+- a Hermes plugin entry point named `memory-firewall`;
+- observe-only Hermes hook registration for `pre_tool_call`, `post_tool_call`,
+  and `post_llm_call`;
+- normalization of high-signal Hermes memory write attempts into `MemoryEvent`
+  records;
+- local detector/policy scan over those Hermes-derived `MemoryEvent` records;
+- local Hermes diagnostics JSONL for normalized events and observations;
+- `memory-firewall hermes status --json`;
+- machine-readable `hermes-status` schema;
+- opt-in turn-level scanning for implicit memory providers via
+  `MEMORY_FIREWALL_HERMES_SCAN_TURNS=1`;
+- local configuration of the Hermes diagnostics directory via
+  `MEMORY_FIREWALL_HERMES_DIR`;
 - issue templates for adapter requests, false positives, detector suggestions,
   and redacted report feedback;
 - machine-readable adapter capability reports;
@@ -98,9 +111,9 @@ private orchestration layer
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-10 Does Not Allow
+## MF-11 Does Not Allow
 
-- real memory-store scanning claims;
+- broad real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
   poisoning detection;
 - claims that state analysis proves truth or authorizes trusted memory;
@@ -117,13 +130,19 @@ private orchestration layer
   Zep, vector-store, or production framework support;
 - claims that reference enforce mode secures native memory outside the
   controlled SQLite substrate;
+- claims that the Hermes hook alpha replaces a Hermes memory provider;
+- claims that the Hermes hook alpha suppresses Mem0, Honcho, GBrain, built-in
+  memory, MCP, or provider `sync_turn` writes;
+- claims that Hermes observations are trusted ledger records, reducer
+  decisions, or approved memories;
+- automatic trusted-context injection into Hermes prompts;
 - claims that the local report is a hosted dashboard, telemetry service, auth
   system, billing system, or server process;
 - raw-content sharing by default;
 - claims that redacted report export is a raw trace export;
 - release tag, PyPI publish, or external launch execution without a separate
   verified release gate;
-- real framework adapter claims;
+- real framework adapter claims beyond the observe-only Hermes hook alpha;
 - production enforcement claims;
 - claims that Memory Firewall determines objective truth;
 - claims that Memory Firewall secures an entire agent.
@@ -411,6 +430,38 @@ The HTML report is local only. MF-10 does not start a hosted dashboard, server,
 auth flow, billing flow, telemetry service, or production release workflow.
 Actual tag or publish execution requires a separate verified gate.
 
+## Hermes Hook Alpha Surface
+
+MF-11 adds:
+
+- `memory_firewall.hermes_plugin:register`;
+- `memory-firewall hermes status`;
+- `memory-firewall hermes status --json`;
+- `memory-firewall schema hermes-status`;
+- a `hermes_agent.plugins` entry point named `memory-firewall`.
+
+The Hermes hook alpha is deliberately observe-only. It can be enabled by Hermes
+as a standalone plugin and can run alongside the active Hermes memory provider.
+It does not set `memory.provider`, wrap a provider, replace Mem0/Honcho, or
+mutate GBrain.
+
+The plugin observes high-signal memory-write attempts from Hermes tool hooks,
+including the built-in `memory` tool, provider write tools such as
+`mem0_conclude` and `honcho_conclude`, and obvious GBrain write tools. It
+normalizes those attempts into `MemoryEvent` records, runs local Memory
+Firewall scan/detector policy, and writes local JSONL diagnostics:
+
+- `events.jsonl`;
+- `observations.jsonl`.
+
+Turn-level scanning for implicit provider writes is disabled by default because
+it can be noisy. It is enabled only when
+`MEMORY_FIREWALL_HERMES_SCAN_TURNS=1` is set.
+
+MF-11 does not claim to see provider-internal `sync_turn` writes exactly, block
+native memory writes, inject trusted read previews, or enforce quarantine. Those
+belong to later provider-wrapper or policy-gate sprints.
+
 ## Adapter Capability Surface
 
 The adapter capability report contains:
@@ -453,9 +504,10 @@ Disposition describes the recommended handling:
 - `review`
 - `quarantine`
 
-`quarantine` is only an advisory disposition value. MF-10 implements local
-review-queue storage, a reference-store enforce demo, and local reports, not production
-framework quarantine or adapter suppression.
+`quarantine` is only an advisory disposition value. MF-11 implements local
+review-queue storage, a reference-store enforce demo, local reports, and an
+observe-only Hermes hook alpha, not production framework quarantine or adapter
+suppression.
 
 Use `poisoned` only for attack demos or confirmed adversarial cases. Normal
 findings should distinguish severity from disposition according to the actual
