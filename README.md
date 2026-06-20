@@ -1,6 +1,7 @@
 # Memory Firewall
 
-Local-first integrity checks for persistent agent memory.
+Contract and CLI shell for local-first integrity checks on persistent agent
+memory.
 
 Memory Firewall starts from one simple failure mode:
 
@@ -47,13 +48,16 @@ Memory Firewall is not a universal security boundary. It does not determine
 objective truth, secure an entire agent, stop every poisoning attack, or
 automatically approve important memories.
 
-The first public launch target is an installable local artifact that can scan
-and explain integrity risks in persistent agent memory. Enforcement claims are
-allowed only where Memory Firewall controls the relevant read/write chokepoint.
+The broader public launch target is an installable local artifact for scanning
+and explaining integrity risks in persistent agent memory. MF-01 does not ship
+that scanner. It freezes the contract, CLI, and claim boundary that later
+scanner and adapter work must obey. Enforcement claims are allowed only where
+Memory Firewall controls the relevant read/write chokepoint.
 
 ## Relationship To Agent Memory Contracts
 
 `agent-memory-contracts` is the public semantic trust kernel. Memory Firewall is
-the runnable scanner and reference guardrail built on top of that direction.
-Private production adapters and orchestration may live elsewhere; this repo must
-stand on its own as a useful open-source artifact.
+the public contract and CLI shell for the scanner/reference guardrail we are
+building on top of that direction. Private production adapters and orchestration
+may live elsewhere; this repo must stand on its own as a useful open-source
+artifact.

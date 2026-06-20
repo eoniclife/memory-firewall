@@ -57,7 +57,7 @@ Not allowed:
 - Does the public language overclaim?
 - Are the event and finding schemas stable enough for MF-02/MF-03?
 - Is the CLI useful without implying detectors exist?
-- Is `agent-memory-contracts==1.3.0` included without leaking private
+- Is `agent-memory-contracts>=1.3,<1.4` included without leaking private
   `governed-memory` assumptions?
 - Are local and CI gates sufficient for a public package shell?
 
@@ -83,11 +83,24 @@ Passed on branch `codex/mf-01-product-shell` before draft PR creation:
 - Python 3.12 focused tests: `8` passed.
 - mypy passed for Python `3.10`, `3.11`, and `3.12`.
 - `compileall` passed for `src` and `tests`.
-- `memory-firewall doctor --json` passed with
-  `agent-memory-contracts==1.3.0`.
+- `memory-firewall doctor --json` passed with compatible
+  `agent-memory-contracts` 1.3.x.
 - `memory-firewall schema bundle` emitted the MF-01 schema bundle.
 - `git diff --check` passed.
 - `python -m build` produced sdist and wheel.
 - `twine check dist/*` passed.
 - Installed-wheel smoke passed in a fresh Python 3.12 venv, including
   `doctor --json` and schema-bundle validation.
+
+Fix-pass after independent reviewer/MiniMax requested claim-boundary changes:
+
+- Python 3.12 tests: `14` passed.
+- mypy passed for Python `3.10`, `3.11`, and `3.12`.
+- `compileall` passed for `src` and `tests`.
+- `memory-firewall doctor --json` passed with compatible
+  `agent-memory-contracts` 1.3.x.
+- `memory-firewall schema bundle` emitted valid JSON.
+- `git diff --check` passed.
+- rebuilt sdist/wheel passed `twine check`.
+- installed-wheel smoke passed with `pip check`, `doctor --json`, and schema
+  bundle validation.

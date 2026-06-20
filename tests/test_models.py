@@ -32,6 +32,31 @@ def test_memory_event_round_trips_to_dict() -> None:
     assert MemoryEvent.from_dict(payload) == event
 
 
+def test_memory_event_rejects_unknown_fields() -> None:
+    payload = {
+        "event_id": "evt_001",
+        "timestamp": "2026-06-20T14:00:00Z",
+        "actor": "agent:test",
+        "user_or_tenant_scope": "tenant:demo",
+        "source_type": "user_message",
+        "source_id": "msg_001",
+        "source_authority": "user_asserted",
+        "raw_or_redacted_content": "hello",
+        "proposed_memory": "hello",
+        "operation": "create",
+        "target_namespace": "demo",
+        "metadata": {},
+        "unexpected": "nope",
+    }
+
+    try:
+        MemoryEvent.from_dict(payload)
+    except ValueError as exc:
+        assert "unknown field" in str(exc)
+    else:
+        raise AssertionError("MemoryEvent accepted an unknown field")
+
+
 def test_memory_finding_round_trips_to_dict() -> None:
     finding = MemoryFinding(
         finding_id="find_001",
@@ -51,3 +76,46 @@ def test_memory_finding_round_trips_to_dict() -> None:
     assert payload["risk_category"] == "authority_or_identity_change"
     assert payload["recommended_disposition"] == "review"
     assert MemoryFinding.from_dict(payload) == finding
+
+
+def test_memory_finding_rejects_invalid_confidence() -> None:
+    try:
+        MemoryFinding(
+            finding_id="find_001",
+            event_id="evt_001",
+            risk_category=RiskCategory.PROVENANCE_GAP,
+            severity=RiskSeverity.SUSPICIOUS,
+            confidence=1.2,
+            evidence_span="unknown source",
+            detector_name="demo",
+            detector_version="0.1.0",
+            explanation="Confidence is intentionally invalid.",
+            recommended_disposition=RecommendedDisposition.REVIEW,
+        )
+    except ValueError as exc:
+        assert "confidence" in str(exc)
+    else:
+        raise AssertionError("MemoryFinding accepted confidence > 1")
+
+
+def test_memory_finding_rejects_string_limitations() -> None:
+    payload = {
+        "finding_id": "find_001",
+        "event_id": "evt_001",
+        "risk_category": "provenance_gap",
+        "severity": "suspicious",
+        "confidence": 0.4,
+        "evidence_span": "unknown source",
+        "detector_name": "demo",
+        "detector_version": "0.1.0",
+        "explanation": "The source is unknown.",
+        "recommended_disposition": "review",
+        "limitations": "not-a-list",
+    }
+
+    try:
+        MemoryFinding.from_dict(payload)
+    except TypeError as exc:
+        assert "limitations" in str(exc)
+    else:
+        raise AssertionError("MemoryFinding accepted string limitations")

@@ -26,7 +26,7 @@ _CLAIM_BUDGET = ClaimBudget(
         "Defines a canonical event surface for persistent memory writes.",
         "Defines an explainable risk taxonomy for memory-integrity findings.",
         "Provides machine-readable schemas and a CLI for inspecting the contract.",
-        "Depends on agent-memory-contracts as the public trust-kernel layer.",
+        "Depends on compatible agent-memory-contracts 1.3.x as the public trust-kernel layer.",
     ),
     not_allowed=(
         "Does not determine objective truth.",

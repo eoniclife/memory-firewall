@@ -10,6 +10,21 @@ from importlib import metadata
 from .version import __version__
 
 
+def _is_supported_amc_version(version: str | None) -> bool:
+    if version is None:
+        return False
+    release = version.split("+", 1)[0].split("-", 1)[0]
+    parts = release.split(".")
+    if len(parts) < 2:
+        return False
+    try:
+        major = int(parts[0])
+        minor = int(parts[1])
+    except ValueError:
+        return False
+    return major == 1 and minor == 3
+
+
 @dataclass(frozen=True, slots=True)
 class DoctorReport:
     """Machine-readable doctor result."""
@@ -52,12 +67,12 @@ def doctor_report() -> DoctorReport:
         amc_version = metadata.version("agent-memory-contracts")
     except metadata.PackageNotFoundError:
         amc_version = None
-        warnings.append("agent-memory-contracts==1.3.0 is not installed.")
+        warnings.append("agent-memory-contracts>=1.3,<1.4 is not installed.")
 
-    amc_ok = amc_version == "1.3.0"
+    amc_ok = _is_supported_amc_version(amc_version)
     if amc_version is not None and not amc_ok:
         warnings.append(
-            f"Expected agent-memory-contracts==1.3.0, found {amc_version}."
+            f"Expected agent-memory-contracts>=1.3,<1.4, found {amc_version}."
         )
 
     return DoctorReport(

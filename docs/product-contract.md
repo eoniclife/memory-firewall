@@ -17,7 +17,7 @@ agent-memory-contracts
     Public semantic trust kernel and conformance layer
 
 memory-firewall
-    Public, runnable scanner/demo/reference guardrail
+    Public contract and CLI shell for the future scanner/demo/reference guardrail
 
 governed-memory
     Private product orchestration, production adapters, enterprise layer
@@ -40,6 +40,19 @@ governed-memory
 - enforcement claims;
 - claims that Memory Firewall determines objective truth;
 - claims that Memory Firewall secures an entire agent.
+
+## Operation Vocabulary
+
+The MF-01 `operation` enum is contract vocabulary for adapter/event producers:
+
+- `create`
+- `update`
+- `upsert`
+- `delete`
+- `import`
+
+These values describe the proposed memory operation. They do not mean MF-01 can
+execute, block, or enforce that operation.
 
 ## Canonical Event Surface
 
@@ -69,6 +82,24 @@ The canonical `MemoryEvent` contains:
 - procedural poisoning;
 - anomalous persistence.
 
+## Severity And Disposition Vocabulary
+
+Severity describes the level of concern:
+
+- `informational`
+- `suspicious`
+- `high_impact`
+
+Disposition describes the recommended handling:
+
+- `pass`
+- `warn`
+- `review`
+- `quarantine`
+
+`quarantine` is only an advisory disposition value in MF-01. This sprint does
+not implement quarantine storage or enforcement.
+
 Use `poisoned` only for attack demos or confirmed adversarial cases. Normal
-findings should use `informational`, `suspicious`, `high_impact`, `warn`,
-`review`, or `quarantine` language according to the actual proof available.
+findings should distinguish severity from disposition according to the actual
+proof available.

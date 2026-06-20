@@ -8,6 +8,39 @@ from typing import Any, Mapping
 
 JSONScalar = str | int | float | bool | None
 
+_EVENT_KEYS = frozenset(
+    {
+        "event_id",
+        "timestamp",
+        "actor",
+        "user_or_tenant_scope",
+        "source_type",
+        "source_id",
+        "source_authority",
+        "raw_or_redacted_content",
+        "proposed_memory",
+        "operation",
+        "target_namespace",
+        "metadata",
+    }
+)
+
+_FINDING_KEYS = frozenset(
+    {
+        "finding_id",
+        "event_id",
+        "risk_category",
+        "severity",
+        "confidence",
+        "evidence_span",
+        "detector_name",
+        "detector_version",
+        "explanation",
+        "recommended_disposition",
+        "limitations",
+    }
+)
+
 
 class SourceType(str, Enum):
     """Where a proposed memory came from."""
@@ -76,7 +109,20 @@ class RecommendedDisposition(str, Enum):
 
 
 def _coerce_metadata(value: Mapping[str, JSONScalar] | None) -> dict[str, JSONScalar]:
-    return dict(value or {})
+    metadata = dict(value or {})
+    for key, item in metadata.items():
+        if item is not None and not isinstance(item, (str, int, float, bool)):
+            raise TypeError(f"metadata[{key!r}] must be a JSON scalar")
+    return metadata
+
+
+def _reject_unknown_fields(
+    value: Mapping[str, Any], allowed: frozenset[str], label: str
+) -> None:
+    extra = sorted(set(value) - allowed)
+    if extra:
+        joined = ", ".join(extra)
+        raise ValueError(f"{label} contains unknown field(s): {joined}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +168,7 @@ class MemoryEvent:
     def from_dict(cls, value: Mapping[str, Any]) -> "MemoryEvent":
         """Build an event from a JSON-like dictionary."""
 
+        _reject_unknown_fields(value, _EVENT_KEYS, "MemoryEvent")
         return cls(
             event_id=str(value["event_id"]),
             timestamp=str(value["timestamp"]),
@@ -154,6 +201,10 @@ class MemoryFinding:
     recommended_disposition: RecommendedDisposition
     limitations: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        if not 0 <= self.confidence <= 1:
+            raise ValueError("confidence must be between 0 and 1")
+
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable dictionary."""
 
@@ -178,9 +229,10 @@ class MemoryFinding:
         raw_limitations = value.get("limitations", ())
         limitations: tuple[str, ...]
         if isinstance(raw_limitations, str):
-            limitations = (raw_limitations,)
+            raise TypeError("limitations must be a sequence of strings")
         else:
             limitations = tuple(str(item) for item in raw_limitations)
+        _reject_unknown_fields(value, _FINDING_KEYS, "MemoryFinding")
         return cls(
             finding_id=str(value["finding_id"]),
             event_id=str(value["event_id"]),
