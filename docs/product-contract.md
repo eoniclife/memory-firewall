@@ -1,9 +1,10 @@
 # Memory Firewall Product Contract
 
-MF-11 adds a first observe-only Hermes hook alpha over the existing scan,
-detector, review, proxy, and report surfaces while keeping broad real
-memory-store scanning, provider replacement, trusted ledger writes, hosted
-dashboards, and production enforcement claims out of scope.
+MF-12 adds a Hermes user-plugin shim installer over the first observe-only
+Hermes hook alpha and the existing scan, detector, review, proxy, and report
+surfaces while keeping broad real memory-store scanning, provider replacement,
+trusted ledger writes, hosted dashboards, and production enforcement claims out
+of scope.
 
 ## Category Line
 
@@ -23,15 +24,16 @@ memory-firewall
     Public contract, detector pack, AMC candidate/evidence preview, normalized
     event-stream scan/watch, local review queue, override receipts, trusted-read
     preview, poisoning demo, reference proxy, local static report, redacted
-    share export, Hermes observe-only hook alpha, conformance probe, and CLI
-    shell for the future inspection/demo/reference guardrail
+    share export, Hermes observe-only hook alpha, Hermes user-plugin shim
+    installer, conformance probe, and CLI shell for the future
+    inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-11 Allows
+## MF-12 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -92,6 +94,7 @@ private orchestration layer
   event IDs, source IDs, review item IDs, and receipt IDs by default;
 - machine-readable `report-result` and `redacted-report-export` schemas;
 - a Hermes plugin entry point named `memory-firewall`;
+- `memory-firewall hermes install-plugin`;
 - observe-only Hermes hook registration for `pre_tool_call`, `post_tool_call`,
   and `post_llm_call`;
 - normalization of high-signal Hermes memory write attempts into `MemoryEvent`
@@ -105,6 +108,8 @@ private orchestration layer
   `MEMORY_FIREWALL_HERMES_SCAN_TURNS=1`;
 - local configuration of the Hermes diagnostics directory via
   `MEMORY_FIREWALL_HERMES_DIR`;
+- a generated Hermes user-plugin shim under
+  `~/.hermes/plugins/memory-firewall/` that delegates to the installed package;
 - issue templates for adapter requests, false positives, detector suggestions,
   and redacted report feedback;
 - machine-readable adapter capability reports;
@@ -112,7 +117,7 @@ private orchestration layer
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-11 Does Not Allow
+## MF-12 Does Not Allow
 
 - broad real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -433,13 +438,19 @@ Actual tag or publish execution requires a separate verified gate.
 
 ## Hermes Hook Alpha Surface
 
-MF-11 adds:
+MF-11 added:
 
 - `memory_firewall.hermes_plugin:register`;
 - `memory-firewall hermes status`;
 - `memory-firewall hermes status --json`;
 - `memory-firewall schema hermes-status`;
 - a `hermes_agent.plugins` entry point named `memory-firewall`.
+
+MF-12 adds:
+
+- `memory-firewall hermes install-plugin`;
+- a generated user-plugin shim at `~/.hermes/plugins/memory-firewall/`;
+- `--hermes-home`, `--force`, and `--json` installer options.
 
 The Hermes hook alpha is deliberately observe-only. It can be enabled by Hermes
 as a standalone plugin and can run alongside the active Hermes memory provider.
@@ -467,6 +478,12 @@ it can be noisy. It is enabled only when
 MF-11 does not claim to see provider-internal `sync_turn` writes exactly, block
 native memory writes, inject trusted read previews, or enforce quarantine. Those
 belong to later provider-wrapper or policy-gate sprints.
+
+The MF-12 installer is a Hermes CLI compatibility shim. It does not patch
+Hermes, configure a Hermes memory provider, or move runtime logic into the
+generated files. The generated `plugin.yaml` and `__init__.py` let current
+Hermes CLI discovery list and enable the installed package's observe-only hook
+module.
 
 ## Adapter Capability Surface
 

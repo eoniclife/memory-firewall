@@ -2,10 +2,17 @@ import json
 import os
 import stat
 
+import pytest
+
 from memory_firewall import (
+    HERMES_PLUGIN_INIT_FILENAME,
+    HERMES_PLUGIN_MANIFEST_FILENAME,
+    HERMES_PLUGIN_NAME,
     HERMES_INTEGRATION_VERSION,
     MemoryEvent,
     ScanEventLevel,
+    default_hermes_plugin_dir,
+    install_hermes_plugin_shim,
     memory_event_from_hermes_turn,
     memory_events_from_hermes_tool_call,
     record_hermes_events,
@@ -142,6 +149,48 @@ def test_hermes_observation_files_are_private(tmp_path) -> None:  # type: ignore
     assert stat.S_IMODE(observations_path.stat().st_mode) == 0o600
 
 
+def test_hermes_install_plugin_writes_user_plugin_shim(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    result = install_hermes_plugin_shim(hermes_home=tmp_path)
+    plugin_dir = default_hermes_plugin_dir(tmp_path)
+    manifest_path = plugin_dir / HERMES_PLUGIN_MANIFEST_FILENAME
+    init_path = plugin_dir / HERMES_PLUGIN_INIT_FILENAME
+
+    assert result.integration_version == HERMES_INTEGRATION_VERSION
+    assert result.plugin_name == HERMES_PLUGIN_NAME
+    assert result.created is True
+    assert result.updated is True
+    assert result.plugin_dir == str(plugin_dir)
+    assert result.enable_command == "hermes plugins enable memory-firewall"
+    assert manifest_path.exists()
+    assert init_path.exists()
+    assert "name: memory-firewall" in manifest_path.read_text(encoding="utf-8")
+    assert "provides_hooks:" in manifest_path.read_text(encoding="utf-8")
+    assert "from memory_firewall.hermes_plugin import register" in init_path.read_text(
+        encoding="utf-8"
+    )
+
+    idempotent = install_hermes_plugin_shim(hermes_home=tmp_path)
+    assert idempotent.created is False
+    assert idempotent.updated is False
+
+
+def test_hermes_install_plugin_refuses_mismatched_existing_shim(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    plugin_dir = default_hermes_plugin_dir(tmp_path)
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / HERMES_PLUGIN_MANIFEST_FILENAME).write_text(
+        "name: different\n", encoding="utf-8"
+    )
+
+    with pytest.raises(FileExistsError):
+        install_hermes_plugin_shim(hermes_home=tmp_path)
+
+    forced = install_hermes_plugin_shim(hermes_home=tmp_path, force=True)
+    assert forced.updated is True
+    assert "name: memory-firewall" in (
+        plugin_dir / HERMES_PLUGIN_MANIFEST_FILENAME
+    ).read_text(encoding="utf-8")
+
+
 def test_hermes_status_cli_reads_observation_dir(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
     events = memory_events_from_hermes_tool_call(
         "memory",
@@ -161,7 +210,7 @@ def test_hermes_status_cli_reads_observation_dir(tmp_path, capsys) -> None:  # t
     assert main(["hermes", "status", "--state-dir", str(tmp_path), "--json"]) == 1
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
-    assert payload["integration_version"] == "mf-11"
+    assert payload["integration_version"] == "mf-12"
     assert payload["total_observations"] == 1
     assert payload["observe_only"] is True
     assert payload["production_enforcement"] is False

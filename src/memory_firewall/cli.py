@@ -16,7 +16,7 @@ from .conformance import run_adapter_conformance
 from .detectors import default_detector_pack, run_detectors
 from .demo import run_poison_demo
 from .doctor import doctor_report
-from .hermes import summarize_hermes_observations
+from .hermes import install_hermes_plugin_shim, summarize_hermes_observations
 from .models import MemoryEvent
 from .policy import DISPOSITION_ORDER, SEVERITY_ORDER, PolicyConfig
 from .proxy import ProxyMode, run_reference_proxy
@@ -345,6 +345,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Directory containing Hermes Memory Firewall JSONL diagnostics.",
     )
     hermes_status_parser.add_argument("--json", action="store_true", dest="as_json")
+    hermes_install_parser = hermes_subparsers.add_parser(
+        "install-plugin",
+        help="Install the Hermes user-plugin shim for current Hermes CLI discovery.",
+    )
+    hermes_install_parser.add_argument(
+        "--hermes-home",
+        help="Hermes home directory. Defaults to HERMES_HOME or ~/.hermes.",
+    )
+    hermes_install_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing memory-firewall user-plugin shim.",
+    )
+    hermes_install_parser.add_argument("--json", action="store_true", dest="as_json")
 
     return parser
 
@@ -825,6 +839,31 @@ def _run_hermes_status(
     return 0 if status.high_risk_observations == 0 else 1
 
 
+def _run_hermes_install_plugin(
+    hermes_home: str | None,
+    force: bool,
+    as_json: bool,
+    stdout: TextIO,
+) -> int:
+    result = install_hermes_plugin_shim(hermes_home=hermes_home, force=force)
+    if as_json:
+        _print_json(result.to_dict(), stdout)
+    else:
+        action = "installed" if result.created else "updated"
+        if not result.created and not result.updated:
+            action = "already installed"
+        print(
+            f"{result.integration_version}: Hermes plugin shim {action}",
+            file=stdout,
+        )
+        print(f"- plugin dir: {result.plugin_dir}", file=stdout)
+        print(f"- manifest: {result.manifest_path}", file=stdout)
+        print(f"- shim: {result.init_path}", file=stdout)
+        print(f"- enable: {result.enable_command}", file=stdout)
+        print("- observe-only: true", file=stdout)
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the Memory Firewall CLI."""
 
@@ -945,6 +984,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             state_dir = None if args.state_dir is None else str(args.state_dir)
             return _run_hermes_status(
                 state_dir,
+                bool(args.as_json),
+                sys.stdout,
+            )
+        if hermes_command == "install-plugin":
+            hermes_home = None if args.hermes_home is None else str(args.hermes_home)
+            return _run_hermes_install_plugin(
+                hermes_home,
+                bool(args.force),
                 bool(args.as_json),
                 sys.stdout,
             )
