@@ -1566,7 +1566,7 @@ def _hermes_observation_summary_schema() -> dict[str, Any]:
             "tool_name",
             "mode",
             "blocked_by_firewall",
-            "event_id",
+            "event_ref",
             "operation",
             "source_authority",
             "target_namespace",
@@ -1580,12 +1580,24 @@ def _hermes_observation_summary_schema() -> dict[str, Any]:
         "properties": {
             "integration_version": {"const": HERMES_INTEGRATION_VERSION},
             "row_number": {"type": "integer", "minimum": 1},
-            "recorded_at": {"type": "string", "minLength": 1},
+            "recorded_at": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": RFC3339_TIMESTAMP_PATTERN,
+                    },
+                    {"const": "unavailable-recorded-at"},
+                ],
+            },
             "hook_name": {"type": "string", "minLength": 1},
             "tool_name": {"type": "string", "minLength": 1},
             "mode": {"const": HERMES_DEFAULT_MODE},
             "blocked_by_firewall": {"type": "boolean"},
-            "event_id": {"type": "string", "minLength": 1},
+            "event_ref": {
+                "type": "string",
+                "pattern": r"^observation-row-[1-9][0-9]*$",
+            },
             "operation": {"type": "string", "enum": _enum_values(MemoryOperation)},
             "source_authority": {
                 "type": "string",

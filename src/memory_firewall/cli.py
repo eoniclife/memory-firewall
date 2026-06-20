@@ -893,19 +893,21 @@ def _run_hermes_observations(
         print("- observe-only: true", file=stdout)
         for item in result.observations:
             categories = ", ".join(item.risk_categories) or "none"
+            detectors = ", ".join(item.detector_names) or "none"
             print(
                 f"- #{item.row_number} {item.recorded_at} "
                 f"{item.level}/{item.highest_disposition} "
                 f"{item.tool_name} -> {item.target_namespace}",
                 file=stdout,
             )
-            print(f"  event: {item.event_id}", file=stdout)
+            print(f"  handle: {item.event_ref}", file=stdout)
             print(
                 f"  findings: {item.finding_count}; "
                 f"contradictions: {item.contradiction_count}; "
                 f"risks: {categories}",
                 file=stdout,
             )
+            print(f"  detectors: {detectors}", file=stdout)
     has_high_risk = any(
         item.level == "high_risk" for item in result.observations
     )

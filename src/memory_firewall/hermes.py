@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .models import (
-    EVENT_ID_PREFIX,
     JSONScalar,
     MemoryEvent,
     MemoryOperation,
@@ -491,7 +490,7 @@ class HermesObservationSummary:
     tool_name: str
     mode: str
     blocked_by_firewall: bool
-    event_id: str
+    event_ref: str
     operation: str
     source_authority: str
     target_namespace: str
@@ -514,7 +513,7 @@ class HermesObservationSummary:
             "hook_name",
             "tool_name",
             "mode",
-            "event_id",
+            "event_ref",
             "operation",
             "source_authority",
             "target_namespace",
@@ -547,7 +546,7 @@ class HermesObservationSummary:
             "tool_name": self.tool_name,
             "mode": self.mode,
             "blocked_by_firewall": self.blocked_by_firewall,
-            "event_id": self.event_id,
+            "event_ref": self.event_ref,
             "operation": self.operation,
             "source_authority": self.source_authority,
             "target_namespace": self.target_namespace,
@@ -986,12 +985,17 @@ def _summary_mode(value: Any) -> str:
     return HERMES_DEFAULT_MODE
 
 
-def _redacted_event_id(value: Any) -> str:
-    if isinstance(value, str) and value.startswith(EVENT_ID_PREFIX):
-        return _safe_token(value, default="redacted-event-id")
-    if value is None or value == "":
-        return "unavailable-event"
-    return "redacted-event-id"
+def _safe_recorded_at(value: Any) -> str:
+    if not isinstance(value, str) or not value:
+        return "unavailable-recorded-at"
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return "unavailable-recorded-at"
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return "unavailable-recorded-at"
+    return value
 
 
 def _redacted_target_namespace(value: Any) -> str:
@@ -1022,7 +1026,7 @@ def _diagnostic_observation_row(
 ) -> dict[str, Any]:
     safe_reason = _safe_token(reason, default="malformed-row")
     return {
-        "recorded_at": f"diagnostic-line-{line_number}",
+        "recorded_at": "unavailable-recorded-at",
         "hook_name": "diagnostic",
         "tool_name": _safe_token(path.name, default="diagnostics"),
         "mode": HERMES_DEFAULT_MODE,
@@ -1104,16 +1108,12 @@ def _hermes_observation_summary_from_row(
     return HermesObservationSummary(
         integration_version=HERMES_INTEGRATION_VERSION,
         row_number=row_number,
-        recorded_at=_string_from_mapping(
-            row,
-            "recorded_at",
-            default="unknown-recorded-at",
-        ),
+        recorded_at=_safe_recorded_at(row.get("recorded_at")),
         hook_name=_safe_token(row.get("hook_name"), default="unknown-hook"),
         tool_name=_safe_token(row.get("tool_name"), default="unknown-tool"),
         mode=_summary_mode(row.get("mode")),
         blocked_by_firewall=blocked if isinstance(blocked, bool) else False,
-        event_id=_redacted_event_id(event_payload.get("event_id")),
+        event_ref=f"observation-row-{row_number}",
         operation=_enum_value(
             event_payload.get("operation"),
             allowed=_MEMORY_OPERATIONS,
@@ -1186,8 +1186,10 @@ def summarize_hermes_observations(
     for row in rows:
         if row.get("blocked_by_firewall") is True:
             blocked += 1
-        recorded_at = row.get("recorded_at")
-        if isinstance(recorded_at, str) and (latest is None or recorded_at > latest):
+        recorded_at = _safe_recorded_at(row.get("recorded_at"))
+        if recorded_at != "unavailable-recorded-at" and (
+            latest is None or recorded_at > latest
+        ):
             latest = recorded_at
         scan = row.get("scan")
         level = scan.get("level") if isinstance(scan, dict) else None

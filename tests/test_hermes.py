@@ -14,6 +14,7 @@ from memory_firewall import (
     ScanEventLevel,
     default_hermes_plugin_dir,
     hermes_observations_schema,
+    hermes_status_schema,
     install_hermes_plugin_shim,
     memory_event_from_hermes_turn,
     memory_events_from_hermes_tool_call,
@@ -167,6 +168,7 @@ def test_hermes_recent_observations_are_newest_first_and_redacted(tmp_path) -> N
     assert result.total_observations == 2
     assert result.returned_observations == 1
     assert result.observations[0].row_number == 2
+    assert result.observations[0].event_ref == "observation-row-2"
     assert result.observations[0].tool_name == "memory"
     assert result.observations[0].target_namespace == "hermes:memory:memory"
     assert "instruction_injection" in result.observations[0].risk_categories
@@ -231,7 +233,7 @@ def test_hermes_recent_observations_handles_malformed_rows_schema_safely(tmp_pat
     observations_path.write_text(
         "\n".join(
             [
-                '{"recorded_at":"2026-06-20T15:00:00Z"}',
+                '{"recorded_at":"User approval token is sk-test-secret"}',
                 "{not json",
                 json.dumps(
                     {
@@ -264,11 +266,19 @@ def test_hermes_recent_observations_handles_malformed_rows_schema_safely(tmp_pat
     assert payload["returned_observations"] == 3
     assert "raw-user-secret" not in rendered
     assert "sk-test-secret" not in rendered
+    assert "User approval token" not in rendered
     assert all(item["mode"] == "observe" for item in payload["observations"])
     assert {item["level"] for item in payload["observations"]} == {"warn"}
     assert {item["highest_disposition"] for item in payload["observations"]} == {
         "review"
     }
+    assert {item["recorded_at"] for item in payload["observations"]} == {
+        "2026-06-20T15:01:00Z",
+        "unavailable-recorded-at",
+    }
+    Draft202012Validator(hermes_status_schema()).validate(
+        summarize_hermes_observations(state_dir=tmp_path).to_dict()
+    )
 
 
 def test_hermes_observation_files_are_private(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -407,9 +417,17 @@ def test_hermes_observations_cli_prints_redacted_rows(tmp_path, capsys) -> None:
     assert payload["returned_observations"] == 1
     assert payload["raw_content_included"] is False
     assert payload["observations"][0]["level"] == "high_risk"
+    assert payload["observations"][0]["event_ref"] == "observation-row-1"
     assert payload["observations"][0]["finding_count"] >= 1
     assert "instruction_injection" in payload["observations"][0]["risk_categories"]
     assert "Ignore previous system instructions" not in captured.out
+
+    assert main(["hermes", "observations", "--state-dir", str(tmp_path)]) == 1
+    text_output = capsys.readouterr().out
+    assert "handle: observation-row-1" in text_output
+    assert "detectors:" in text_output
+    assert "instruction-pattern-v1" in text_output
+    assert "Ignore previous system instructions" not in text_output
 
 
 def test_hermes_plugin_registers_observe_hooks() -> None:

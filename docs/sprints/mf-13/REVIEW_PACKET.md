@@ -43,7 +43,7 @@ It emits redacted rows with:
 - hook name;
 - tool name;
 - redacted target namespace;
-- event ID;
+- local row handle;
 - operation;
 - source authority;
 - level;
@@ -111,7 +111,8 @@ new observations command without printing raw candidate memory text.
 - focused MF-13/Hermes/schema tests:
   `uv run --python 3.12 --extra dev pytest tests/test_hermes.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
   - initial: `59` passed;
-  - fix-pass after exact-head review: `61` passed.
+  - fix-pass after exact-head review: `61` passed;
+  - second fix-pass after timestamp / raw-derived ID review: `61` passed.
 - focused type checks:
   `uv run --python 3.12 --extra dev mypy src/memory_firewall/hermes.py src/memory_firewall/cli.py src/memory_firewall/schema.py src/memory_firewall/__init__.py tests/test_hermes.py tests/test_cli.py tests/test_schema_and_taxonomy.py`
   - `Success: no issues found in 7 source files`.
@@ -168,9 +169,22 @@ Fix-pass changes:
 - normalizes malformed rows into schema-valid `warn` / `review` diagnostic
   summaries;
 - skips invalid JSON crashes by creating a redacted diagnostic summary row;
-- sanitizes tool, detector, and event-id-ish summary fields;
+- sanitizes tool, detector, timestamp, and identifier-like summary fields;
+- exposes a local `event_ref` row handle instead of the raw-derived
+  MemoryEvent ID in the redacted observations readout;
 - adds regressions for secret-bearing targets, invalid JSON, incomplete rows,
-  invalid enum values, and schema validation.
+  invalid enum values, malformed timestamps, and schema validation.
+
+Second fix-pass changes after review of
+`dd85abd13894d1aeb1b06b567ce3430cd5ddf8f5`:
+
+- malformed or adversarial `recorded_at` values now collapse to
+  `unavailable-recorded-at` instead of being echoed into summaries;
+- Hermes status ignores malformed timestamps when calculating
+  `latest_recorded_at`;
+- redacted observation summaries use `event_ref: observation-row-N`, not a
+  deterministic hash over raw/proposed memory content;
+- text output prints detector names so a user can see why the row was flagged.
 
 Additional fix-pass probe:
 
@@ -179,6 +193,10 @@ Additional fix-pass probe:
   `hermes:memory:redacted` and `hermes:provider-tool:mem0_remember:redacted`
   in the observations output;
 - grep confirmed the secret phrase did not appear in the observations CLI JSON.
+- an adversarial diagnostics row with a secret-bearing `recorded_at`,
+  secret-bearing `target_namespace`, and raw MemoryEvent ID validated against
+  both Hermes status and Hermes observations schemas without echoing the secret,
+  timestamp phrase, or `mfev_v1_` ID in the redacted observations JSON.
 
 ## Dogfood Results
 
