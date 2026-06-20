@@ -85,6 +85,7 @@ Not allowed:
 - Does scan-local assertion context stay local and bounded rather than becoming
   an implicit ledger?
 - Can low-authority/high-risk candidates influence later contradiction state?
+- Are reducer-review-required contradictions clearly non-PASS?
 - Are exit codes deterministic and documented?
 - Are JSON schema and runtime output aligned?
 - Does watch mode handle `KeyboardInterrupt` without a traceback?
@@ -231,4 +232,63 @@ Fix-pass gates:
     and `watch`;
   - scan/watch installed-wheel smoke verified the expected high-risk exit code
     and output shape;
+  - `uv pip check` passed.
+
+## Second Exact-Head Review Fix Pass
+
+Independent reviewer `Euclid`
+(`019ee671-ff71-76a2-9c40-12ee21b7f798`) reviewed exact head
+`d0098e6af725a927bd36b2e8058e1c7fa7f056ea` and requested changes.
+
+Blocking finding:
+
+- clean higher-authority contradictions produced
+  `trusted_state_action=requires_reducer_review` but still surfaced as
+  `PASS`, so scan summaries and exit codes could report a reducer-review
+  state change as clean.
+
+Second fix-pass changes:
+
+- `requires_reducer_review` state-analysis outcomes now map to `HIGH-RISK`;
+- added a signed-record Alice/Bob contradiction regression asserting that the
+  second event is not PASS and returns review-required exit code `1`;
+- product contract clarifies that `HIGH-RISK` includes reducer-review-required
+  contradictions.
+
+Second fix-pass gates:
+
+- focused MF-06/schema/CLI tests:
+  `uv run --python 3.12 --extra dev pytest tests/test_scan.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
+  - `37` passed
+- focused type checks:
+  `uv run --python 3.12 --extra dev mypy src/memory_firewall/scan.py src/memory_firewall/cli.py tests/test_scan.py tests/test_cli.py tests/test_schema_and_taxonomy.py`
+  - `Success: no issues found in 5 source files`
+- full test suite:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev pytest -q`
+  - `118` passed
+- type checks:
+  - Python `3.10`, `3.11`, and `3.12` mypy all reported
+    `Success: no issues found in 24 source files`
+- bytecode smoke:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-compile uv run --python 3.12 --extra dev python -m compileall -q src tests`
+- CLI/schema JSON smokes:
+  - `doctor`, `schema bundle`, and `schema scan-result`
+- scan/watch smoke:
+  - generated a canonical two-line signed-record contradiction stream;
+  - scan and watch returned the expected high-risk exit code `1`;
+  - summary-only scan omitted per-event records;
+  - watch emitted one JSONL result per event and the second event had
+    `trusted_state_action=requires_reducer_review`.
+- whitespace check:
+  `git diff --check`
+- package build and metadata:
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-build uv build --out-dir /tmp/memory-firewall-mf06-second-dist`
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-build uv run --python 3.12 --extra dev twine check /tmp/memory-firewall-mf06-second-dist/*`
+- installed-wheel smoke:
+  - installed `memory_firewall-0.1.0.dev6-py3-none-any.whl` into
+    `/tmp/memory-firewall-mf06-second-wheel-venv`;
+  - installed console script smokes for `doctor`, `schema scan-result`, `scan`,
+    and `watch`;
+  - scan/watch installed-wheel smoke verified the expected high-risk exit code
+    and output shape for signed-record contradictions;
   - `uv pip check` passed.

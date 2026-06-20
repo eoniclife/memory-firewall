@@ -87,6 +87,33 @@ def test_scan_jsonl_tracks_stream_contradictions_without_trusting_state() -> Non
     Draft202012Validator(scan_result_schema()).validate(result.to_dict())
 
 
+def test_scan_jsonl_review_required_contradiction_is_not_pass() -> None:
+    first = _event(
+        index=1,
+        authority=SourceAuthority.SIGNED_RECORD,
+        state_object="Alice",
+        content="Signed ERP field value is Alice.",
+        subject="tenant:demo:finance:payout",
+    )
+    second = _event(
+        index=2,
+        authority=SourceAuthority.SIGNED_RECORD,
+        state_object="Bob",
+        content="Signed ERP field value is Bob.",
+        subject="tenant:demo:finance:payout",
+    )
+
+    result = scan_jsonl_events(_jsonl(first, second), source="events.jsonl")
+
+    assert result.events[1].state_analysis.trusted_state_action == (
+        TrustedStateAction.REQUIRES_REDUCER_REVIEW
+    )
+    assert result.events[1].level.value == "high_risk"
+    assert result.summary.pass_events == 1
+    assert result.summary.high_risk_events == 1
+    assert exit_code_for_summary(result.summary) == SCAN_EXIT_REVIEW_REQUIRED
+
+
 def test_scan_jsonl_invalid_lines_are_structured_without_raw_secret_echo() -> None:
     secret = "p@ssw0rd!"
     bad_line = json.dumps({"password": secret}) + "\n"

@@ -290,10 +290,10 @@ def _event_level(
     disposition: RecommendedDisposition,
     analysis: StateAnalysisResult,
 ) -> ScanEventLevel:
-    if (
-        analysis.trusted_state_action
-        == TrustedStateAction.BLOCKED_LOW_AUTHORITY_CONTRADICTION
-    ):
+    if analysis.trusted_state_action in {
+        TrustedStateAction.BLOCKED_LOW_AUTHORITY_CONTRADICTION,
+        TrustedStateAction.REQUIRES_REDUCER_REVIEW,
+    }:
         return ScanEventLevel.HIGH_RISK
     if disposition in {
         RecommendedDisposition.REVIEW,
