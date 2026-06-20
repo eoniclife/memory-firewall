@@ -1,10 +1,11 @@
 # Memory Firewall Product Contract
 
-MF-14 adds a local Hermes setup checkup over the first observe-only Hermes hook
-alpha, Hermes user-plugin shim installer, redacted Hermes observations readout,
-and existing scan, detector, review, proxy, and report surfaces while keeping
-broad real memory-store scanning, provider replacement, trusted ledger writes,
-hosted dashboards, and production enforcement claims out of scope.
+MF-15 keeps the local Hermes setup checkup aligned with the config shape emitted
+by the Hermes CLI, over the first observe-only Hermes hook alpha, Hermes
+user-plugin shim installer, redacted Hermes observations readout, and existing
+scan, detector, review, proxy, and report surfaces while keeping broad real
+memory-store scanning, provider replacement, trusted ledger writes, hosted
+dashboards, and production enforcement claims out of scope.
 
 ## Category Line
 
@@ -34,7 +35,7 @@ private orchestration layer
     this public repository
 ```
 
-## MF-14 Allows
+## MF-15 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -127,7 +128,7 @@ private orchestration layer
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-14 Does Not Allow
+## MF-15 Does Not Allow
 
 - broad real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -482,6 +483,9 @@ MF-14 adds:
 - `memory-firewall schema hermes-checkup`;
 - `--hermes-home`, `--state-dir`, `--limit`, and `--json` checkup options.
 
+MF-15 fixes the checkup's local `plugins.enabled` hint parsing so it recognizes
+the valid YAML list style emitted by Hermes' own `plugins enable` command.
+
 The Hermes hook alpha is deliberately observe-only. It can be enabled by Hermes
 as a standalone plugin and can run alongside the active Hermes memory provider.
 It does not set `memory.provider`, wrap a provider, replace Mem0/Honcho, or
@@ -523,7 +527,7 @@ turn transcripts, does not expose the raw-derived MemoryEvent ID in the redacted
 readout, and does not make the underlying local diagnostics safe to share
 wholesale.
 
-The MF-14 checkup readout is local setup evidence. It can say whether generated
+The MF-15 checkup readout is local setup evidence. It can say whether generated
 shim files match this package, whether a local config file lists
 `memory-firewall` under `plugins.enabled`, whether diagnostics paths have
 private permissions, and whether redacted observations are readable. With

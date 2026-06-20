@@ -31,7 +31,7 @@ from .models import (
 from .scan import ScanEventLevel, ScanEventResult, scan_event
 from .version import __version__
 
-HERMES_INTEGRATION_VERSION = "mf-14"
+HERMES_INTEGRATION_VERSION = "mf-15"
 HERMES_EVENTS_FILENAME = "events.jsonl"
 HERMES_OBSERVATIONS_FILENAME = "observations.jsonl"
 HERMES_PLUGIN_NAME = "memory-firewall"
@@ -1401,18 +1401,18 @@ def _config_mentions_memory_firewall(path: Path) -> bool:
             continue
         if not in_plugins:
             continue
-        if in_enabled and indent > enabled_indent and stripped.startswith("- "):
+        if in_enabled and indent >= enabled_indent and stripped.startswith("- "):
             if _yaml_scalar_value(stripped[2:]) == HERMES_PLUGIN_NAME:
                 return True
             continue
         if indent <= enabled_indent:
             in_enabled = False
         if stripped.startswith("enabled:"):
-            in_enabled = True
-            enabled_indent = indent
             inline_value = stripped.removeprefix("enabled:").strip()
             if _yaml_list_contains_plugin(inline_value):
                 return True
+            in_enabled = inline_value == ""
+            enabled_indent = indent
     return False
 
 

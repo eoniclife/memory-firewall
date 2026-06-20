@@ -44,7 +44,7 @@ _CLAIM_BUDGET = ClaimBudget(
         "Writes local Hermes Memory Firewall diagnostics without replacing the active memory provider.",
         "Installs a Hermes user-plugin shim that delegates to the installed Memory Firewall package.",
         "Shows redacted recent Hermes observation summaries without printing raw candidate memory text.",
-        "Runs a local Hermes setup checkup over plugin shim, config hints, diagnostics permissions, and recent observations.",
+        "Runs a local Hermes setup checkup over plugin shim, plugins.enabled config hints, diagnostics permissions, and recent observations.",
         "Provides machine-readable schemas and a CLI for inspecting the contract.",
         "Depends on compatible agent-memory-contracts 1.3.x as the public trust-kernel layer.",
     ),

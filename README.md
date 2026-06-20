@@ -14,9 +14,11 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository is in MF-14: a first observe-only Hermes hook alpha, Hermes
+This repository is in MF-15: a first observe-only Hermes hook alpha, Hermes
 user-plugin shim installer, redacted recent-observations readout, and local
-Hermes checkup over the existing Memory Firewall scan/detector/report surfaces.
+Hermes checkup over the existing Memory Firewall scan/detector/report surfaces,
+with the checkup aligned to the `plugins.enabled` list style emitted by the
+Hermes CLI.
 
 Implemented now:
 
@@ -110,7 +112,7 @@ uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 
 ## Hermes Hook Alpha
 
-The MF-14 Hermes integration is observe-only. Install the package into the same
+The MF-15 Hermes integration is observe-only. Install the package into the same
 Python environment that runs Hermes, install the Hermes user-plugin shim, enable
 the `memory-firewall` plugin in Hermes, then start a fresh Hermes session.
 
@@ -225,6 +227,10 @@ shim files, whether the local config lists `memory-firewall` under
 `plugins.enabled`, diagnostics permissions, status counts, and recent redacted
 observations. With `--write-sample`, it writes one synthetic local observation
 to prove the readout path. It remains observe-only.
+
+MF-15 fixes a real-Hermes dogfood issue: Hermes can serialize
+`plugins.enabled` list items at the same indentation level as `enabled:`, and
+the checkup now recognizes that valid config shape.
 
 ## Relationship To Agent Memory Contracts
 

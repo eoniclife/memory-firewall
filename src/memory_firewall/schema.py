@@ -39,7 +39,7 @@ from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-14"
+SCHEMA_VERSION = "mf-15"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -1512,7 +1512,7 @@ def hermes_status_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-status.mf-14.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-status.mf-15.json",
         "title": "HermesStatus",
         "type": "object",
         "additionalProperties": False,
@@ -1628,7 +1628,7 @@ def hermes_observations_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-observations.mf-14.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-observations.mf-15.json",
         "title": "HermesObservations",
         "type": "object",
         "additionalProperties": False,
@@ -1689,7 +1689,7 @@ def hermes_checkup_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-checkup.mf-14.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-checkup.mf-15.json",
         "title": "HermesCheckup",
         "type": "object",
         "additionalProperties": False,
