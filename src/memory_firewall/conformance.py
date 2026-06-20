@@ -140,7 +140,7 @@ def _check_enforce_report(report: AdapterCapabilityReport) -> ConformanceCheckRe
 
 
 def run_adapter_conformance(adapter: MemoryAdapter) -> ConformanceResult:
-    """Run deterministic MF-02 conformance checks for an adapter."""
+    """Run deterministic conformance checks for an adapter."""
 
     report = adapter.capability_report
     sample_events = tuple(adapter.sample_events())

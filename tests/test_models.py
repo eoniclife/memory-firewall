@@ -2,6 +2,9 @@ from typing import Any, cast
 
 from memory_firewall import (
     EVENT_ID_PREFIX,
+    FINDING_ID_PREFIX,
+    EvidenceField,
+    EvidenceSpan,
     MemoryEvent,
     MemoryFinding,
     MemoryOperation,
@@ -11,6 +14,7 @@ from memory_firewall import (
     SourceAuthority,
     SourceType,
     compute_memory_event_id,
+    compute_memory_finding_id,
 )
 
 
@@ -27,6 +31,30 @@ def _event_payload_without_id() -> dict[str, object]:
         "operation": "create",
         "target_namespace": "finance",
         "metadata": {"redacted": False, "trace_id": "trace_001"},
+    }
+
+
+def _evidence_span() -> EvidenceSpan:
+    return EvidenceSpan(
+        source_field=EvidenceField.PROPOSED_MEMORY,
+        start=0,
+        end=len("Payout approvals"),
+        quote="Payout approvals",
+    )
+
+
+def _finding_payload_without_id(event_id: str = "evt_001") -> dict[str, object]:
+    return {
+        "event_id": event_id,
+        "risk_category": "authority_or_identity_change",
+        "severity": "high_impact",
+        "confidence": 0.82,
+        "evidence_span": _evidence_span().to_dict(),
+        "detector_name": "authority-change-demo",
+        "detector_version": "0.1.0",
+        "explanation": "The memory changes an approval path.",
+        "recommended_disposition": "review",
+        "limitations": ["No source-of-record check was run."],
     }
 
 
@@ -191,7 +219,7 @@ def test_memory_finding_round_trips_to_dict() -> None:
         risk_category=RiskCategory.AUTHORITY_OR_IDENTITY_CHANGE,
         severity=RiskSeverity.HIGH_IMPACT,
         confidence=0.82,
-        evidence_span="payout approvals go to Alice",
+        evidence_span=_evidence_span(),
         detector_name="authority-change-demo",
         detector_version="0.1.0",
         explanation="The memory changes an approval path.",
@@ -205,6 +233,46 @@ def test_memory_finding_round_trips_to_dict() -> None:
     assert MemoryFinding.from_dict(payload) == finding
 
 
+def test_memory_finding_computes_stable_finding_id() -> None:
+    payload = _finding_payload_without_id()
+    finding = MemoryFinding.from_detector_payload(payload)
+    with_bad_id = dict(payload)
+    with_bad_id["finding_id"] = object()
+
+    assert finding.finding_id.startswith(FINDING_ID_PREFIX)
+    assert finding.finding_id == compute_memory_finding_id(with_bad_id)
+    assert finding.has_expected_finding_id()
+    assert MemoryFinding.from_dict(finding.to_dict()) == finding
+
+
+def test_memory_finding_validates_evidence_span_against_event() -> None:
+    event = MemoryEvent.from_adapter_payload(_event_payload_without_id())
+    finding = MemoryFinding.from_detector_payload(
+        _finding_payload_without_id(event.event_id)
+    )
+
+    finding.validate_against_event(event)
+
+
+def test_memory_finding_rejects_evidence_span_mismatch() -> None:
+    event = MemoryEvent.from_adapter_payload(_event_payload_without_id())
+    payload = _finding_payload_without_id(event.event_id)
+    payload["evidence_span"] = {
+        "source_field": "proposed_memory",
+        "start": 0,
+        "end": 5,
+        "quote": "Wrong",
+    }
+    finding = MemoryFinding.from_detector_payload(payload)
+
+    try:
+        finding.validate_against_event(event)
+    except ValueError as exc:
+        assert "quote" in str(exc)
+    else:
+        raise AssertionError("MemoryFinding accepted a mismatched evidence span")
+
+
 def test_memory_finding_rejects_invalid_confidence() -> None:
     try:
         MemoryFinding(
@@ -213,7 +281,7 @@ def test_memory_finding_rejects_invalid_confidence() -> None:
             risk_category=RiskCategory.PROVENANCE_GAP,
             severity=RiskSeverity.SUSPICIOUS,
             confidence=1.2,
-            evidence_span="unknown source",
+            evidence_span=_evidence_span(),
             detector_name="demo",
             detector_version="0.1.0",
             explanation="Confidence is intentionally invalid.",
@@ -232,7 +300,7 @@ def test_memory_finding_rejects_string_limitations() -> None:
         "risk_category": "provenance_gap",
         "severity": "suspicious",
         "confidence": 0.4,
-        "evidence_span": "unknown source",
+        "evidence_span": _evidence_span().to_dict(),
         "detector_name": "demo",
         "detector_version": "0.1.0",
         "explanation": "The source is unknown.",
@@ -256,7 +324,7 @@ def test_memory_finding_rejects_direct_string_limitations() -> None:
             risk_category=RiskCategory.PROVENANCE_GAP,
             severity=RiskSeverity.SUSPICIOUS,
             confidence=0.4,
-            evidence_span="unknown source",
+            evidence_span=_evidence_span(),
             detector_name="demo",
             detector_version="0.1.0",
             explanation="The source is unknown.",
@@ -276,7 +344,7 @@ def test_memory_finding_requires_limitations_field() -> None:
         "risk_category": "provenance_gap",
         "severity": "suspicious",
         "confidence": 0.4,
-        "evidence_span": "unknown source",
+        "evidence_span": _evidence_span().to_dict(),
         "detector_name": "demo",
         "detector_version": "0.1.0",
         "explanation": "The source is unknown.",
@@ -298,7 +366,7 @@ def test_memory_finding_rejects_non_string_limitation_items() -> None:
         "risk_category": "provenance_gap",
         "severity": "suspicious",
         "confidence": 0.4,
-        "evidence_span": "unknown source",
+        "evidence_span": _evidence_span().to_dict(),
         "detector_name": "demo",
         "detector_version": "0.1.0",
         "explanation": "The source is unknown.",

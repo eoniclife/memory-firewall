@@ -14,6 +14,9 @@ from .conformance import (
 )
 from .models import (
     EVENT_ID_PREFIX,
+    FINDING_ID_PREFIX,
+    EvidenceField,
+    EvidenceSpan,
     JSONScalar,
     MemoryEvent,
     MemoryFinding,
@@ -23,12 +26,24 @@ from .models import (
     RiskSeverity,
     SourceAuthority,
     SourceType,
+    compute_memory_finding_id,
     compute_memory_event_id,
+)
+from .policy import (
+    DISPOSITION_ORDER,
+    SEVERITY_ORDER,
+    PolicyConfig,
+    PolicyRecommendation,
+    baseline_disposition_for_severity,
+    max_disposition,
+    recommend_policy,
 )
 from .schema import (
     adapter_capability_report_schema,
+    evidence_span_schema,
     event_schema,
     finding_schema,
+    policy_schema,
     schema_bundle,
 )
 from .taxonomy import RiskCategoryDefinition, risk_taxonomy
@@ -41,6 +56,9 @@ __all__ = [
     "ConformanceCheckResult",
     "ConformanceResult",
     "EVENT_ID_PREFIX",
+    "FINDING_ID_PREFIX",
+    "EvidenceField",
+    "EvidenceSpan",
     "JSONScalar",
     "MemoryAdapter",
     "MemoryEvent",
@@ -54,12 +72,22 @@ __all__ = [
     "SourceType",
     "__version__",
     "adapter_capability_report_schema",
+    "baseline_disposition_for_severity",
     "claim_budget",
     "compute_memory_event_id",
+    "compute_memory_finding_id",
     "demo_memory_adapter",
+    "DISPOSITION_ORDER",
+    "evidence_span_schema",
     "event_schema",
     "finding_schema",
+    "max_disposition",
+    "PolicyConfig",
+    "PolicyRecommendation",
+    "policy_schema",
+    "recommend_policy",
     "risk_taxonomy",
     "run_adapter_conformance",
+    "SEVERITY_ORDER",
     "schema_bundle",
 ]

@@ -1,6 +1,6 @@
 # Memory Firewall Product Contract
 
-MF-02 freezes the product surface before detectors and real framework adapters
+MF-03 freezes the product surface before detectors and real framework adapters
 are added.
 
 ## Category Line
@@ -26,22 +26,26 @@ private orchestration layer
     this public repository
 ```
 
-## MF-02 Allows
+## MF-03 Allows
 
 - package installation;
 - `memory-firewall doctor`;
 - machine-readable event and finding schemas;
 - deterministic event IDs for adapter-emitted `MemoryEvent` payloads;
+- deterministic finding IDs for `MemoryFinding` payloads;
+- structured evidence spans anchored to event text fields;
+- deterministic policy recommendation defaults;
 - machine-readable adapter capability reports;
 - a conformance probe over the built-in fake adapter;
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-02 Does Not Allow
+## MF-03 Does Not Allow
 
 - real memory scanning claims;
 - detector claims;
 - quarantine claims;
+- trusted-read claims;
 - real framework adapter claims;
 - enforcement claims;
 - claims that Memory Firewall determines objective truth;
@@ -49,7 +53,7 @@ private orchestration layer
 
 ## Operation Vocabulary
 
-The MF-02 `operation` enum is contract vocabulary for adapter/event producers:
+The MF-03 `operation` enum is contract vocabulary for adapter/event producers:
 
 - `create`
 - `update`
@@ -57,7 +61,7 @@ The MF-02 `operation` enum is contract vocabulary for adapter/event producers:
 - `delete`
 - `import`
 
-These values describe the proposed memory operation. They do not mean MF-02 can
+These values describe the proposed memory operation. They do not mean MF-03 can
 execute, block, import from a framework, or enforce that operation.
 
 ## Canonical Event Surface
@@ -77,10 +81,54 @@ The canonical `MemoryEvent` contains:
 - `target_namespace`
 - `metadata`
 
-MF-02 also defines deterministic event IDs. The id is derived from the
+MF-03 also defines deterministic event IDs. The id is derived from the
 canonical event material excluding `event_id`, using a stable JSON encoding and
 SHA-256 digest prefix. This gives adapters a reproducible id surface without
 claiming semantic truth or deduplication across incompatible memory systems.
+
+## Finding And Evidence Surface
+
+The canonical `MemoryFinding` contains:
+
+- `finding_id`
+- `event_id`
+- `risk_category`
+- `severity`
+- `confidence`
+- `evidence_span`
+- `detector_name`
+- `detector_version`
+- `explanation`
+- `recommended_disposition`
+- `limitations`
+
+MF-03 defines deterministic finding IDs. The id is derived from canonical
+finding material excluding `finding_id`.
+
+The structured `EvidenceSpan` contains:
+
+- `source_field`
+- `start`
+- `end`
+- `quote`
+
+Evidence spans can be validated against a supplied `MemoryEvent`; the quoted
+text must exactly match the referenced event field and character offsets.
+This proves local anchoring only. It does not prove the quoted text is true.
+
+## Policy Surface
+
+MF-03 defines deterministic policy recommendation defaults:
+
+- severity order: `informational`, `suspicious`, `high_impact`;
+- disposition order: `pass`, `warn`, `review`, `quarantine`;
+- suspicious findings above the review threshold escalate to `review`;
+- high-impact findings above the quarantine threshold escalate to advisory
+  `quarantine`;
+- a finding's own recommended disposition can only make the result stricter.
+
+Policy output is an inspectable recommendation. It is not detector execution,
+automatic approval, quarantine storage, or enforcement.
 
 ## Adapter Capability Surface
 
@@ -124,7 +172,7 @@ Disposition describes the recommended handling:
 - `review`
 - `quarantine`
 
-`quarantine` is only an advisory disposition value in MF-02. This sprint does
+`quarantine` is only an advisory disposition value in MF-03. This sprint does
 not implement quarantine storage or enforcement.
 
 Use `poisoned` only for attack demos or confirmed adversarial cases. Normal

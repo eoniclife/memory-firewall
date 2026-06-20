@@ -18,6 +18,7 @@ from .models import (
     _reject_unknown_fields,
     _require_string,
 )
+from .version import __version__
 
 _REPORT_KEYS = frozenset(
     {
@@ -198,7 +199,7 @@ class AdapterCapabilityReport:
 
 @runtime_checkable
 class MemoryAdapter(Protocol):
-    """Protocol implemented by adapters that want MF-02 conformance checks."""
+    """Protocol implemented by adapters that want conformance checks."""
 
     @property
     def capability_report(self) -> AdapterCapabilityReport:
@@ -212,7 +213,7 @@ class MemoryAdapter(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class DemoMemoryAdapter:
-    """Built-in fake adapter used only to prove the MF-02 contract."""
+    """Built-in fake adapter used only to prove the conformance contract."""
 
     @property
     def capability_report(self) -> AdapterCapabilityReport:
@@ -220,7 +221,7 @@ class DemoMemoryAdapter:
 
         return AdapterCapabilityReport(
             adapter_name="memory-firewall-demo",
-            adapter_version="0.1.0.dev2",
+            adapter_version=__version__,
             supported_capabilities=(
                 AdapterCapability.EMIT_MEMORY_EVENTS,
                 AdapterCapability.OBSERVE_WRITES,
@@ -234,7 +235,7 @@ class DemoMemoryAdapter:
                 AdapterCapability.PERSIST_CURSOR,
             ),
             notes=(
-                "Fake adapter for MF-02 conformance only; no framework "
+                "Fake adapter for conformance only; no framework "
                 "integration or enforce path is implemented.",
             ),
             metadata={"demo": True},

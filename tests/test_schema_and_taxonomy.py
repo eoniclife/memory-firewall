@@ -1,6 +1,8 @@
 from jsonschema import Draft202012Validator
 
 from memory_firewall import (
+    EvidenceField,
+    EvidenceSpan,
     MemoryEvent,
     MemoryFinding,
     MemoryOperation,
@@ -12,8 +14,10 @@ from memory_firewall import (
     adapter_capability_report_schema,
     claim_budget,
     demo_memory_adapter,
+    evidence_span_schema,
     event_schema,
     finding_schema,
+    policy_schema,
     risk_taxonomy,
 )
 from memory_firewall.schema import schema_bundle
@@ -40,10 +44,11 @@ def test_finding_schema_uses_frozen_risk_taxonomy() -> None:
 def test_schema_bundle_includes_claim_budget() -> None:
     bundle = schema_bundle()
     budget = claim_budget()
-    assert bundle["schema_version"] == "mf-02"
+    assert bundle["schema_version"] == "mf-03"
     assert bundle["claim_budget"]["allowed"] == list(budget.allowed)
     assert any("Does not scan real stores yet" in item for item in budget.not_allowed)
     assert "adapter_capability_report_schema" in bundle
+    assert "policy_schema" in bundle
 
 
 def test_model_outputs_validate_against_exported_schemas() -> None:
@@ -67,7 +72,12 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
         risk_category=RiskCategory.PROVENANCE_GAP,
         severity=RiskSeverity.INFORMATIONAL,
         confidence=0.2,
-        evidence_span="The CRM returned owner Alice.",
+        evidence_span=EvidenceSpan(
+            source_field=EvidenceField.PROPOSED_MEMORY,
+            start=0,
+            end=len("Account owner"),
+            quote="Account owner",
+        ),
         detector_name="schema-test",
         detector_version="0.1.0",
         explanation="Schema validation smoke.",
@@ -75,9 +85,14 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     )
 
     Draft202012Validator.check_schema(event_schema())
+    Draft202012Validator.check_schema(evidence_span_schema())
     Draft202012Validator.check_schema(finding_schema())
     Draft202012Validator.check_schema(adapter_capability_report_schema())
+    Draft202012Validator.check_schema(policy_schema())
     Draft202012Validator(event_schema()).validate(event.to_dict())
+    Draft202012Validator(evidence_span_schema()).validate(
+        finding.evidence_span.to_dict()
+    )
     Draft202012Validator(finding_schema()).validate(finding.to_dict())
     Draft202012Validator(adapter_capability_report_schema()).validate(
         demo_memory_adapter().capability_report.to_dict()

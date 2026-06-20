@@ -12,7 +12,9 @@ from typing import Any, Mapping, TypeVar
 
 JSONScalar = str | int | float | bool | None
 EVENT_ID_PREFIX = "mfev_v1_"
+FINDING_ID_PREFIX = "mffind_v1_"
 MAX_EVENT_ID_CHARS = 96
+MAX_FINDING_ID_CHARS = 96
 MAX_TEXT_FIELD_CHARS = 16_384
 MAX_METADATA_ENTRIES = 64
 MAX_METADATA_KEY_CHARS = 128
@@ -48,6 +50,15 @@ _FINDING_KEYS = frozenset(
         "explanation",
         "recommended_disposition",
         "limitations",
+    }
+)
+
+_EVIDENCE_SPAN_KEYS = frozenset(
+    {
+        "source_field",
+        "start",
+        "end",
+        "quote",
     }
 )
 
@@ -120,6 +131,13 @@ class RecommendedDisposition(str, Enum):
     QUARANTINE = "quarantine"
 
 
+class EvidenceField(str, Enum):
+    """Event fields that can anchor a finding's evidence span."""
+
+    RAW_OR_REDACTED_CONTENT = "raw_or_redacted_content"
+    PROPOSED_MEMORY = "proposed_memory"
+
+
 def _coerce_metadata(value: Mapping[str, JSONScalar]) -> dict[str, JSONScalar]:
     if not isinstance(value, Mapping):
         raise TypeError("metadata must be a mapping")
@@ -170,6 +188,12 @@ def _require_string(
     return value
 
 
+def _require_int(value: Any, field_name: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"{field_name} must be an integer")
+    return value
+
+
 def _coerce_enum(enum_type: type[EnumT], value: Any, field_name: str) -> EnumT:
     if isinstance(value, enum_type):
         return value
@@ -208,12 +232,25 @@ def compute_memory_event_id(value: Mapping[str, Any]) -> str:
     return f"{EVENT_ID_PREFIX}{digest[:32]}"
 
 
+def compute_memory_finding_id(value: Mapping[str, Any]) -> str:
+    """Return the deterministic id for a MemoryFinding-like payload."""
+
+    payload = dict(value)
+    payload["finding_id"] = "_pending_finding_id"
+    finding = MemoryFinding.from_dict(payload)
+    canonical = finding.to_dict()
+    canonical.pop("finding_id")
+    digest = hashlib.sha256(_canonical_json(canonical).encode("utf-8")).hexdigest()
+    return f"{FINDING_ID_PREFIX}{digest[:32]}"
+
+
 @dataclass(frozen=True, slots=True)
 class MemoryEvent:
     """Canonical event proposed by adapters or event proxies.
 
-    MF-02 defines the shape only. Later sprints may add readers, detectors, and
-    adapters that emit this event; this model does not claim to scan or enforce.
+    The current contract defines the shape only. Later sprints may add readers,
+    detectors, and adapters that emit this event; this model does not claim to
+    scan or enforce.
     """
 
     event_id: str
@@ -377,6 +414,81 @@ class MemoryEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class EvidenceSpan:
+    """Structured span in a MemoryEvent field that explains a finding."""
+
+    source_field: EvidenceField
+    start: int
+    end: int
+    quote: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.source_field, EvidenceField):
+            raise TypeError("source_field must be an EvidenceField")
+        start = _require_int(self.start, "start")
+        end = _require_int(self.end, "end")
+        if start < 0:
+            raise ValueError("start must be non-negative")
+        if end < start:
+            raise ValueError("end must be greater than or equal to start")
+        quote = _require_string(
+            self.quote,
+            "quote",
+            allow_empty=True,
+            max_chars=MAX_TEXT_FIELD_CHARS,
+        )
+        if len(quote) != end - start:
+            raise ValueError("quote length must match end - start")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable evidence span."""
+
+        return {
+            "source_field": self.source_field.value,
+            "start": self.start,
+            "end": self.end,
+            "quote": self.quote,
+        }
+
+    def source_text(self, event: MemoryEvent) -> str:
+        """Return the MemoryEvent text field referenced by this span."""
+
+        if self.source_field == EvidenceField.RAW_OR_REDACTED_CONTENT:
+            return event.raw_or_redacted_content
+        if self.source_field == EvidenceField.PROPOSED_MEMORY:
+            return event.proposed_memory
+        raise ValueError(f"unsupported evidence source field: {self.source_field}")
+
+    def validate_against_event(self, event: MemoryEvent) -> None:
+        """Validate that this span exactly matches the event text."""
+
+        source = self.source_text(event)
+        if self.end > len(source):
+            raise ValueError("evidence span end exceeds source field length")
+        if source[self.start : self.end] != self.quote:
+            raise ValueError("evidence span quote does not match source field")
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "EvidenceSpan":
+        """Build an evidence span from a JSON-like dictionary."""
+
+        _reject_unknown_fields(value, _EVIDENCE_SPAN_KEYS, "EvidenceSpan")
+        return cls(
+            source_field=_coerce_enum(
+                EvidenceField, value["source_field"], "source_field"
+            ),
+            start=_require_int(value["start"], "start"),
+            end=_require_int(value["end"], "end"),
+            quote=_require_string(
+                value["quote"],
+                "quote",
+                allow_empty=True,
+                max_chars=MAX_TEXT_FIELD_CHARS,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class MemoryFinding:
     """Explainable finding emitted by a detector in later sprints."""
 
@@ -385,7 +497,7 @@ class MemoryFinding:
     risk_category: RiskCategory
     severity: RiskSeverity
     confidence: float
-    evidence_span: str
+    evidence_span: EvidenceSpan
     detector_name: str
     detector_version: str
     explanation: str
@@ -397,7 +509,7 @@ class MemoryFinding:
             self.finding_id,
             "finding_id",
             allow_empty=False,
-            max_chars=MAX_TEXT_FIELD_CHARS,
+            max_chars=MAX_FINDING_ID_CHARS,
         )
         _require_string(
             self.event_id,
@@ -411,12 +523,8 @@ class MemoryFinding:
             raise TypeError("severity must be a RiskSeverity")
         if not 0 <= self.confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
-        _require_string(
-            self.evidence_span,
-            "evidence_span",
-            allow_empty=True,
-            max_chars=MAX_TEXT_FIELD_CHARS,
-        )
+        if not isinstance(self.evidence_span, EvidenceSpan):
+            raise TypeError("evidence_span must be an EvidenceSpan")
         _require_string(
             self.detector_name,
             "detector_name",
@@ -453,13 +561,30 @@ class MemoryFinding:
             "risk_category": self.risk_category.value,
             "severity": self.severity.value,
             "confidence": self.confidence,
-            "evidence_span": self.evidence_span,
+            "evidence_span": self.evidence_span.to_dict(),
             "detector_name": self.detector_name,
             "detector_version": self.detector_version,
             "explanation": self.explanation,
             "recommended_disposition": self.recommended_disposition.value,
             "limitations": list(self.limitations),
         }
+
+    def expected_finding_id(self) -> str:
+        """Return the deterministic id implied by this finding's canonical fields."""
+
+        return compute_memory_finding_id(self.to_dict())
+
+    def has_expected_finding_id(self) -> bool:
+        """Return whether `finding_id` matches the deterministic finding id."""
+
+        return self.finding_id == self.expected_finding_id()
+
+    def validate_against_event(self, event: MemoryEvent) -> None:
+        """Validate that this finding is anchored to the supplied event."""
+
+        if self.event_id != event.event_id:
+            raise ValueError("finding event_id does not match event.event_id")
+        self.evidence_span.validate_against_event(event)
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "MemoryFinding":
@@ -479,7 +604,7 @@ class MemoryFinding:
                 value["finding_id"],
                 "finding_id",
                 allow_empty=False,
-                max_chars=MAX_TEXT_FIELD_CHARS,
+                max_chars=MAX_FINDING_ID_CHARS,
             ),
             event_id=_require_string(
                 value["event_id"],
@@ -492,12 +617,7 @@ class MemoryFinding:
             ),
             severity=_coerce_enum(RiskSeverity, value["severity"], "severity"),
             confidence=float(value["confidence"]),
-            evidence_span=_require_string(
-                value["evidence_span"],
-                "evidence_span",
-                allow_empty=True,
-                max_chars=MAX_TEXT_FIELD_CHARS,
-            ),
+            evidence_span=EvidenceSpan.from_dict(value["evidence_span"]),
             detector_name=_require_string(
                 value["detector_name"],
                 "detector_name",
@@ -523,3 +643,11 @@ class MemoryFinding:
             ),
             limitations=limitations,
         )
+
+    @classmethod
+    def from_detector_payload(cls, value: Mapping[str, Any]) -> "MemoryFinding":
+        """Build a finding and fill `finding_id` from canonical finding material."""
+
+        payload = dict(value)
+        payload["finding_id"] = compute_memory_finding_id(payload)
+        return cls.from_dict(payload)

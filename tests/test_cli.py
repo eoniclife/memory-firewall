@@ -8,7 +8,7 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["package"] == "memory-firewall"
-    assert payload["schema_version"] == "mf-02"
+    assert payload["schema_version"] == "mf-03"
 
 
 def test_adapter_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
@@ -16,6 +16,13 @@ def test_adapter_schema_command_prints_json(capsys) -> None:  # type: ignore[no-
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["title"] == "AdapterCapabilityReport"
+
+
+def test_policy_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "policy"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "PolicyContract"
 
 
 def test_risks_json_command(capsys) -> None:  # type: ignore[no-untyped-def]
@@ -30,6 +37,19 @@ def test_claims_text_command(capsys) -> None:  # type: ignore[no-untyped-def]
     captured = capsys.readouterr()
     assert "Allowed claims:" in captured.out
     assert "Non-claims:" in captured.out
+
+
+def test_policy_json_command(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["policy", "--json"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["policy_version"] == "mf-03"
+    assert payload["severity_order"] == [
+        "informational",
+        "suspicious",
+        "high_impact",
+    ]
+    assert payload["disposition_order"] == ["pass", "warn", "review", "quarantine"]
 
 
 def test_conformance_demo_json_command(capsys) -> None:  # type: ignore[no-untyped-def]

@@ -7,6 +7,7 @@ from typing import Any
 from .adapters import AdapterCapability
 from .claim_budget import claim_budget
 from .models import (
+    EvidenceField,
     MemoryOperation,
     RecommendedDisposition,
     RiskCategory,
@@ -17,7 +18,7 @@ from .models import (
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-02"
+SCHEMA_VERSION = "mf-03"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -46,7 +47,7 @@ def event_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/memory-event.mf-02.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/memory-event.mf-03.json",
         "title": "MemoryEvent",
         "type": "object",
         "additionalProperties": False,
@@ -105,12 +106,31 @@ def event_schema() -> dict[str, Any]:
     }
 
 
+def evidence_span_schema() -> dict[str, Any]:
+    """Return the MF-03 structured evidence span JSON schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/evidence-span.mf-03.json",
+        "title": "EvidenceSpan",
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["source_field", "start", "end", "quote"],
+        "properties": {
+            "source_field": {"type": "string", "enum": _enum_values(EvidenceField)},
+            "start": {"type": "integer", "minimum": 0},
+            "end": {"type": "integer", "minimum": 0},
+            "quote": {"type": "string", "maxLength": 16384},
+        },
+    }
+
+
 def finding_schema() -> dict[str, Any]:
     """Return the canonical MemoryFinding JSON schema."""
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/memory-finding.mf-02.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/memory-finding.mf-03.json",
         "title": "MemoryFinding",
         "type": "object",
         "additionalProperties": False,
@@ -128,12 +148,12 @@ def finding_schema() -> dict[str, Any]:
             "limitations",
         ],
         "properties": {
-            "finding_id": {"type": "string", "minLength": 1},
+            "finding_id": {"type": "string", "minLength": 1, "maxLength": 96},
             "event_id": {"type": "string", "minLength": 1},
             "risk_category": {"type": "string", "enum": _enum_values(RiskCategory)},
             "severity": {"type": "string", "enum": _enum_values(RiskSeverity)},
             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-            "evidence_span": {"type": "string"},
+            "evidence_span": evidence_span_schema(),
             "detector_name": {"type": "string", "minLength": 1},
             "detector_version": {"type": "string", "minLength": 1},
             "explanation": {"type": "string", "minLength": 1},
@@ -147,11 +167,11 @@ def finding_schema() -> dict[str, Any]:
 
 
 def adapter_capability_report_schema() -> dict[str, Any]:
-    """Return the MF-02 adapter capability report JSON schema."""
+    """Return the adapter capability report JSON schema."""
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-capability-report.mf-02.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-capability-report.mf-03.json",
         "title": "AdapterCapabilityReport",
         "type": "object",
         "additionalProperties": False,
@@ -191,6 +211,88 @@ def adapter_capability_report_schema() -> dict[str, Any]:
     }
 
 
+def policy_schema() -> dict[str, Any]:
+    """Return the MF-03 deterministic policy JSON schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/policy.mf-03.json",
+        "title": "PolicyContract",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "policy_version",
+            "severity_order",
+            "disposition_order",
+            "config_schema",
+            "recommendation_schema",
+        ],
+        "properties": {
+            "policy_version": {"const": "mf-03"},
+            "severity_order": {
+                "type": "array",
+                "items": {"type": "string", "enum": _enum_values(RiskSeverity)},
+            },
+            "disposition_order": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": _enum_values(RecommendedDisposition),
+                },
+            },
+            "config_schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "suspicious_review_confidence",
+                    "high_impact_quarantine_confidence",
+                    "metadata",
+                ],
+                "properties": {
+                    "suspicious_review_confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                    },
+                    "high_impact_quarantine_confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": ["string", "number", "integer", "boolean", "null"]
+                        },
+                    },
+                },
+            },
+            "recommendation_schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "finding_id",
+                    "recommended_disposition",
+                    "reason_codes",
+                    "policy_version",
+                ],
+                "properties": {
+                    "finding_id": {"type": "string", "minLength": 1},
+                    "recommended_disposition": {
+                        "type": "string",
+                        "enum": _enum_values(RecommendedDisposition),
+                    },
+                    "reason_codes": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                    "policy_version": {"const": "mf-03"},
+                },
+            },
+        },
+    }
+
+
 def schema_bundle() -> dict[str, Any]:
     """Return the complete public contract bundle."""
 
@@ -199,8 +301,10 @@ def schema_bundle() -> dict[str, Any]:
         "package_version": __version__,
         "schema_version": SCHEMA_VERSION,
         "event_schema": event_schema(),
+        "evidence_span_schema": evidence_span_schema(),
         "finding_schema": finding_schema(),
         "adapter_capability_report_schema": adapter_capability_report_schema(),
+        "policy_schema": policy_schema(),
         "risk_taxonomy": [item.to_dict() for item in risk_taxonomy()],
         "claim_budget": claim_budget().to_dict(),
     }
