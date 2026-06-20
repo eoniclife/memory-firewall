@@ -8,6 +8,7 @@ from .adapters import AdapterCapability
 from .analysis import ANALYSIS_VERSION, TrustedStateAction
 from .claim_budget import claim_budget
 from .detectors import DETECTOR_PACK_NAME, DETECTOR_PACK_VERSION, default_detector_pack
+from .demo import POISON_DEMO_VERSION
 from .models import (
     EvidenceField,
     MAX_METADATA_ENTRIES,
@@ -34,7 +35,7 @@ from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-07"
+SCHEMA_VERSION = "mf-08"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -892,6 +893,154 @@ def trusted_read_preview_schema() -> dict[str, Any]:
     }
 
 
+def demo_result_schema() -> dict[str, Any]:
+    """Return the MF-08 local poisoning demo result schema."""
+
+    naive_write_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["key", "value", "source_event_id", "source_authority"],
+        "properties": {
+            "key": {"type": "string", "minLength": 1},
+            "value": {"type": "string", "minLength": 1},
+            "source_event_id": {"type": "string", "pattern": "^mfev_v1_[0-9a-f]{32}$"},
+            "source_authority": {
+                "type": "string",
+                "enum": _enum_values(SourceAuthority),
+            },
+        },
+    }
+    naive_read_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["key", "value", "source_event_id"],
+        "properties": {
+            "key": {"type": "string", "minLength": 1},
+            "value": {"type": "string", "minLength": 1},
+            "source_event_id": {"type": "string", "pattern": "^mfev_v1_[0-9a-f]{32}$"},
+        },
+    }
+    outcome_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "naive_answer",
+            "source_of_record_answer",
+            "naive_memory_was_poisoned",
+            "benign_memory_passed",
+            "firewall_high_risk_events",
+            "firewall_high_risk_event_ids",
+            "queued_items",
+            "pending_preview_items",
+            "rejected_preview_items",
+            "override_preview_items",
+            "default_path_excludes_unreviewed_memory",
+            "reject_path_excludes_forged_memory",
+            "override_path_requires_receipt",
+        ],
+        "properties": {
+            "naive_answer": {"type": "string", "minLength": 1},
+            "source_of_record_answer": {"type": "string", "minLength": 1},
+            "naive_memory_was_poisoned": {"type": "boolean"},
+            "benign_memory_passed": {"type": "boolean"},
+            "firewall_high_risk_events": {"type": "integer", "minimum": 0},
+            "firewall_high_risk_event_ids": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "pattern": "^mfev_v1_[0-9a-f]{32}$",
+                },
+                "uniqueItems": True,
+            },
+            "queued_items": {"type": "integer", "minimum": 0},
+            "pending_preview_items": {"type": "integer", "minimum": 0},
+            "rejected_preview_items": {"type": "integer", "minimum": 0},
+            "override_preview_items": {"type": "integer", "minimum": 0},
+            "default_path_excludes_unreviewed_memory": {"type": "boolean"},
+            "reject_path_excludes_forged_memory": {"type": "boolean"},
+            "override_path_requires_receipt": {"type": "boolean"},
+        },
+    }
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/demo-result.mf-08.json",
+        "title": "PoisonDemoResult",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "demo_version",
+            "scenario",
+            "events",
+            "naive_store",
+            "memory_firewall",
+            "outcome",
+            "limitations",
+        ],
+        "properties": {
+            "demo_version": {"const": POISON_DEMO_VERSION},
+            "scenario": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "scenario_id",
+                    "memory_key",
+                    "source_of_record_value",
+                    "forged_value",
+                    "question",
+                    "description",
+                ],
+                "properties": {
+                    "scenario_id": {"type": "string", "minLength": 1},
+                    "memory_key": {"type": "string", "minLength": 1},
+                    "source_of_record_value": {"type": "string", "minLength": 1},
+                    "forged_value": {"type": "string", "minLength": 1},
+                    "question": {"type": "string", "minLength": 1},
+                    "description": {"type": "string", "minLength": 1},
+                },
+            },
+            "events": {
+                "type": "array",
+                "minItems": 1,
+                "items": event_schema(),
+            },
+            "naive_store": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["contract", "writes", "read_after_poison"],
+                "properties": {
+                    "contract": {"const": "toy_last_write_wins_store"},
+                    "writes": {"type": "array", "items": naive_write_schema},
+                    "read_after_poison": naive_read_schema,
+                },
+            },
+            "memory_firewall": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "scan_result",
+                    "review_queue",
+                    "pending_preview",
+                    "rejected_preview",
+                    "override_preview",
+                ],
+                "properties": {
+                    "scan_result": scan_result_schema(),
+                    "review_queue": review_queue_schema(),
+                    "pending_preview": trusted_read_preview_schema(),
+                    "rejected_preview": trusted_read_preview_schema(),
+                    "override_preview": trusted_read_preview_schema(),
+                },
+            },
+            "outcome": outcome_schema,
+            "limitations": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+            },
+        },
+    }
+
+
 def schema_bundle() -> dict[str, Any]:
     """Return the complete public contract bundle."""
 
@@ -912,6 +1061,7 @@ def schema_bundle() -> dict[str, Any]:
         "review_queue_schema": review_queue_schema(),
         "override_receipt_schema": override_receipt_schema(),
         "trusted_read_preview_schema": trusted_read_preview_schema(),
+        "demo_result_schema": demo_result_schema(),
         "default_detector_pack": default_detector_pack().to_dict(),
         "risk_taxonomy": [item.to_dict() for item in risk_taxonomy()],
         "claim_budget": claim_budget().to_dict(),

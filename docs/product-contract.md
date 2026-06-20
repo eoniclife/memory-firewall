@@ -1,9 +1,8 @@
 # Memory Firewall Product Contract
 
-MF-07 adds a local review queue, deterministic allow/reject receipts, and a
-trusted-read preview over allowed review items while keeping real memory-store
-scanning, framework adapters, trusted ledger writes, and enforcement claims out
-of scope.
+MF-08 adds a deterministic local poisoning demo over a toy memory store and the
+existing scan/review/preview surfaces while keeping real memory-store scanning,
+framework adapters, trusted ledger writes, and enforcement claims out of scope.
 
 ## Category Line
 
@@ -22,7 +21,7 @@ agent-memory-contracts
 memory-firewall
     Public contract, detector pack, AMC candidate/evidence preview, normalized
     event-stream scan/watch, local review queue, override receipts, trusted-read
-    preview, conformance probe, and CLI shell for the future
+    preview, poisoning demo, conformance probe, and CLI shell for the future
     inspection/demo/reference guardrail
 
 private orchestration layer
@@ -30,7 +29,7 @@ private orchestration layer
     this public repository
 ```
 
-## MF-07 Allows
+## MF-08 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -72,12 +71,15 @@ private orchestration layer
 - idempotent repeated decisions when the same receipt material is supplied;
 - a local trusted-read preview over allowed, receipted review items;
 - exclusion of rejected review items from trusted-read preview items;
+- a deterministic local poisoning demo over a toy last-write-wins memory store;
+- `memory-firewall demo poison --json`;
+- a machine-readable `demo-result` schema;
 - machine-readable adapter capability reports;
 - a conformance probe over the built-in fake adapter;
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-07 Does Not Allow
+## MF-08 Does Not Allow
 
 - real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -90,6 +92,8 @@ private orchestration layer
 - claims that local review queue storage is enforced quarantine;
 - claims that trusted-read preview is a trusted ledger, reducer decision, or
   production read broker;
+- claims that the poisoning demo is a benchmark, real adapter, real memory
+  framework, or production enforcement proof;
 - real framework adapter claims;
 - enforcement claims;
 - claims that Memory Firewall determines objective truth;
@@ -294,6 +298,33 @@ write trusted state, call `MemoryGate.promote`, suppress native writes, connect
 to an adapter, or prove that the assertion is objectively true. Rejected and
 pending items are excluded from preview items.
 
+## Poisoning Demo Surface
+
+MF-08 adds:
+
+- `memory-firewall demo poison`;
+- `memory-firewall demo poison --json`;
+- `memory-firewall schema demo-result`.
+
+The demo is intentionally small and local. It creates two normalized
+`MemoryEvent` records:
+
+- a signed source-of-record memory saying the project codename is `Helio`;
+- an untrusted later write trying to remember `Mirage` for the same durable
+  fact.
+
+The toy naive store is last-write-wins, so after both writes it answers
+`Mirage`. Memory Firewall then runs the same events through scan and review:
+the signed record passes, the untrusted conflicting write becomes high-risk,
+the pending trusted-read preview stays empty, a reject decision keeps the forged
+memory out of preview, and a separate explicit override path appears only with
+a local receipt.
+
+This demo makes the persistent-memory failure mode inspectable. It does not
+wrap Mem0, Letta, Zep, Hermes, GBrain, LangChain, SQLite, a vector database, or
+any real memory substrate. It is not a benchmark and does not prove that Memory
+Firewall detects every poisoning attempt.
+
 ## Adapter Capability Surface
 
 The adapter capability report contains:
@@ -336,7 +367,7 @@ Disposition describes the recommended handling:
 - `review`
 - `quarantine`
 
-`quarantine` is only an advisory disposition value. MF-07 implements local
+`quarantine` is only an advisory disposition value. MF-08 implements local
 review-queue storage, not quarantine enforcement or adapter suppression.
 
 Use `poisoned` only for attack demos or confirmed adversarial cases. Normal

@@ -14,6 +14,7 @@ from .analysis import MemoryStateAssertion, analyze_memory_state
 from .claim_budget import claim_budget
 from .conformance import run_adapter_conformance
 from .detectors import default_detector_pack, run_detectors
+from .demo import run_poison_demo
 from .doctor import doctor_report
 from .models import MemoryEvent
 from .policy import DISPOSITION_ORDER, SEVERITY_ORDER, PolicyConfig
@@ -36,6 +37,7 @@ from .schema import (
     adapter_capability_report_schema,
     detector_pack_schema,
     detector_result_schema,
+    demo_result_schema,
     evidence_span_schema,
     event_schema,
     finding_schema,
@@ -86,6 +88,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "review-queue",
             "override-receipt",
             "trusted-read-preview",
+            "demo-result",
             "bundle",
         ),
         help="Schema to print.",
@@ -261,6 +264,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     conformance_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    demo_parser = subparsers.add_parser(
+        "demo",
+        help="Run deterministic local demos.",
+    )
+    demo_subparsers = demo_parser.add_subparsers(
+        dest="demo_command",
+        required=True,
+    )
+    poison_parser = demo_subparsers.add_parser(
+        "poison",
+        help="Show a local memory-poisoning failure and review path.",
+    )
+    poison_parser.add_argument("--json", action="store_true", dest="as_json")
+
     return parser
 
 
@@ -303,6 +320,8 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = override_receipt_schema()
     elif name == "trusted-read-preview":
         payload = trusted_read_preview_schema()
+    elif name == "demo-result":
+        payload = demo_result_schema()
     else:
         payload = schema_bundle()
     _print_json(payload, stdout)
@@ -636,6 +655,37 @@ def _run_conformance(adapter: str, as_json: bool, stdout: TextIO) -> int:
     return 0 if result.passed else 1
 
 
+def _run_demo_poison(as_json: bool, stdout: TextIO) -> int:
+    result = run_poison_demo()
+    payload = result.to_dict()
+    outcome = result.outcome()
+    if as_json:
+        _print_json(payload, stdout)
+    else:
+        print(f"{result.demo_version}: {result.scenario.scenario_id}", file=stdout)
+        print(
+            f"- naive answer: {outcome['naive_answer']} "
+            f"(source of record: {outcome['source_of_record_answer']})",
+            file=stdout,
+        )
+        print(
+            f"- firewall high-risk events: {outcome['firewall_high_risk_events']}",
+            file=stdout,
+        )
+        print(
+            f"- pending/rejected preview items: "
+            f"{outcome['pending_preview_items']}/"
+            f"{outcome['rejected_preview_items']}",
+            file=stdout,
+        )
+        print(
+            f"- explicit override preview items: "
+            f"{outcome['override_preview_items']}",
+            file=stdout,
+        )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the Memory Firewall CLI."""
 
@@ -727,6 +777,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(f"unknown review command: {review_command}")
     if args.command == "conformance":
         return _run_conformance(str(args.adapter), bool(args.as_json), sys.stdout)
+    if args.command == "demo":
+        demo_command = str(args.demo_command)
+        if demo_command == "poison":
+            return _run_demo_poison(bool(args.as_json), sys.stdout)
+        parser.error(f"unknown demo command: {demo_command}")
     parser.error(f"unknown command: {args.command}")
     return 2
 
