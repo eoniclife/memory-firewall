@@ -86,6 +86,8 @@ class DetectorPack:
             raise TypeError("definitions must be a tuple of DetectorDefinition objects")
         if not self.definitions:
             raise ValueError("definitions must not be empty")
+        if self.name != DETECTOR_PACK_NAME:
+            raise ValueError(f"name must be {DETECTOR_PACK_NAME}")
         seen: set[str] = set()
         for definition in self.definitions:
             if not isinstance(definition, DetectorDefinition):
@@ -101,6 +103,8 @@ class DetectorPack:
                     f"{definition.name}"
                 )
             seen.add(definition.name)
+        if self.definitions != _DETECTOR_DEFINITIONS:
+            raise ValueError("definitions must match the built-in ordered detector pack")
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-serializable detector pack description."""

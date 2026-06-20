@@ -220,9 +220,29 @@ def test_memory_event_rejects_timestamp_without_timezone() -> None:
     try:
         MemoryEvent.from_adapter_payload(payload)
     except ValueError as exc:
-        assert "timezone" in str(exc)
+        assert "RFC 3339" in str(exc)
     else:
         raise AssertionError("MemoryEvent accepted timestamp without timezone")
+
+
+def test_memory_event_rejects_schema_incompatible_timestamp_grammar() -> None:
+    invalid_timestamps = (
+        "2026-W25-6T14:00:00+00:00",
+        "2026-06-20 14:00:00+00:00",
+        "2026-06-20T14:00:00+0000",
+    )
+    for timestamp in invalid_timestamps:
+        payload = _event_payload_without_id()
+        payload["timestamp"] = timestamp
+
+        try:
+            MemoryEvent.from_adapter_payload(payload)
+        except ValueError as exc:
+            assert "RFC 3339" in str(exc)
+        else:
+            raise AssertionError(
+                f"MemoryEvent accepted schema-incompatible timestamp: {timestamp}"
+            )
 
 
 def test_memory_event_rejects_non_json_metadata_number() -> None:

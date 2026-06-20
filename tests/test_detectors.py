@@ -4,6 +4,7 @@ from typing import Any, cast
 from jsonschema import Draft202012Validator
 
 from memory_firewall import (
+    DETECTOR_PACK_NAME,
     DETECTOR_PACK_VERSION,
     DetectorDefinition,
     DetectorPack,
@@ -87,9 +88,9 @@ def test_detector_pack_rejects_schema_invalid_custom_version() -> None:
 
     try:
         DetectorPack(
-            name="custom",
+            name=DETECTOR_PACK_NAME,
             version="custom-v1",
-            definitions=(definition,),
+            definitions=default_detector_pack().definitions,
         )
     except ValueError as exc:
         assert DETECTOR_PACK_VERSION in str(exc)
@@ -109,7 +110,7 @@ def test_detector_pack_rejects_mislabeled_builtin_definition() -> None:
 
     try:
         DetectorPack(
-            name="custom",
+            name=DETECTOR_PACK_NAME,
             version=DETECTOR_PACK_VERSION,
             definitions=(mislabeled,),
         )
@@ -117,6 +118,35 @@ def test_detector_pack_rejects_mislabeled_builtin_definition() -> None:
         assert "built-in metadata" in str(exc)
     else:
         raise AssertionError("DetectorPack accepted mismatched detector metadata")
+
+
+def test_detector_pack_rejects_subset_or_reordered_default_identity() -> None:
+    definitions = default_detector_pack().definitions
+
+    for invalid_definitions in (definitions[:1], tuple(reversed(definitions))):
+        try:
+            DetectorPack(
+                name=DETECTOR_PACK_NAME,
+                version=DETECTOR_PACK_VERSION,
+                definitions=invalid_definitions,
+            )
+        except ValueError as exc:
+            assert "built-in ordered detector pack" in str(exc)
+        else:
+            raise AssertionError("DetectorPack accepted noncanonical composition")
+
+
+def test_detector_pack_rejects_custom_name() -> None:
+    try:
+        DetectorPack(
+            name="custom",
+            version=DETECTOR_PACK_VERSION,
+            definitions=default_detector_pack().definitions,
+        )
+    except ValueError as exc:
+        assert DETECTOR_PACK_NAME in str(exc)
+    else:
+        raise AssertionError("DetectorPack accepted custom pack name")
 
 
 def test_detector_definition_rejects_non_string_version() -> None:

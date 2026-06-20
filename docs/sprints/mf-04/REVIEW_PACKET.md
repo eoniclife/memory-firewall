@@ -48,6 +48,8 @@ Allowed:
 - Detector evidence spans avoid quoting MF-04-recognized secret-like values
   when another detector match overlaps those values.
 - Detector findings include explicit limitations and policy recommendations.
+- The default MF-04 detector pack identity is bound to the exact built-in
+  ordered detector composition.
 
 Not allowed:
 
@@ -63,6 +65,10 @@ Not allowed:
 - Does every detector include explicit limitations?
 - Can any detector evidence span republish a recognized secret-like value when
   the matched text also triggers another risk category?
+- Do runtime model validation and exported JSON Schemas reject the same
+  non-RFC3339 timestamp forms?
+- Can a subset or reordered detector pack impersonate the default MF-04 pack
+  name/version?
 - Does the benign fixture stay quiet?
 - Do docs avoid scanner, quarantine, trusted-read, adapter, enforcement, and
   universal-poisoning claims?
@@ -157,6 +163,23 @@ Reviewer state:
   - provenance-gap findings can anchor to source fields even when content text
     is empty.
 
+- GPT Pro requested further changes on exact head
+  `2a0b0d33bdf36facdff8ffe649665d4abf5f35e2`:
+  - non-secret detector evidence spans could still republish complete
+    recognized secrets when a match overlapped credential text;
+  - runtime timestamp validation accepted some ISO 8601 forms that the exported
+    `format: date-time` schema rejected;
+  - subset or reordered packs could reuse the default pack name/version while
+    changing detector composition.
+- Subsequent fix-pass changes address those findings with regression coverage:
+  - detector evidence span construction now strips overlapping MF-04-recognized
+    secret-like values before serialization;
+  - `MemoryEvent` runtime validation and the exported event schema share one
+    RFC3339-shaped timestamp pattern, with `FormatChecker` schema tests;
+  - `DetectorPack` runtime validation and the exported detector-pack schema
+    require the exact default ordered detector definitions and default pack
+    name.
+
 Additional local gates after the global evidence-span redaction regression:
 
 - focused detector/model/CLI/schema tests:
@@ -165,6 +188,44 @@ Additional local gates after the global evidence-span redaction regression:
 - full test suite:
   `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev pytest -q`
   - `83` passed
+- type checks:
+  - `UV_PROJECT_ENVIRONMENT=.venv-310 uv run --python 3.10 --extra dev mypy src tests`
+  - `UV_PROJECT_ENVIRONMENT=.venv-311 uv run --python 3.11 --extra dev mypy src tests`
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-mypy uv run --python 3.12 --extra dev mypy src tests`
+  - all reported `Success: no issues found in 20 source files`
+- bytecode smoke:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev python -m compileall -q src tests`
+- CLI/schema JSON smokes:
+  - `memory-firewall doctor --json`
+  - `memory-firewall schema bundle`
+  - `memory-firewall schema detector-pack`
+  - `memory-firewall schema detector-result`
+  - `memory-firewall policy --json`
+  - `memory-firewall conformance demo --json`
+  - `memory-firewall detect --event - --json`
+  - JSON validation passed and the sample secret value was absent from detector
+    output
+- whitespace check:
+  `git diff --check`
+- package build and metadata:
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-full uv build --out-dir /tmp/memory-firewall-mf04-dist`
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev twine check /tmp/memory-firewall-mf04-dist/*`
+- installed-wheel smoke:
+  - installed `memory_firewall-0.1.0.dev4-py3-none-any.whl` into
+    `/tmp/memory-firewall-mf04-wheel-venv`
+  - `uv pip check --python /tmp/memory-firewall-mf04-wheel-venv/bin/python`
+  - installed console script smokes for `doctor`, detector schemas, and
+    `detect --event - --json`
+  - installed-wheel detector output was checked for sample secret absence
+
+Additional local gates after the timestamp/schema and pack-identity fix:
+
+- focused detector/model/CLI/schema tests:
+  `UV_PROJECT_ENVIRONMENT=.venv-312 uv run --python 3.12 --extra dev pytest tests/test_detectors.py tests/test_models.py tests/test_schema_and_taxonomy.py tests/test_cli.py -q`
+  - `68` passed
+- full test suite:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev pytest -q`
+  - `88` passed
 - type checks:
   - `UV_PROJECT_ENVIRONMENT=.venv-310 uv run --python 3.10 --extra dev mypy src tests`
   - `UV_PROJECT_ENVIRONMENT=.venv-311 uv run --python 3.11 --extra dev mypy src tests`

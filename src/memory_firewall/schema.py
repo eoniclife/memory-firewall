@@ -6,7 +6,7 @@ from typing import Any
 
 from .adapters import AdapterCapability
 from .claim_budget import claim_budget
-from .detectors import DETECTOR_PACK_VERSION, default_detector_pack
+from .detectors import DETECTOR_PACK_NAME, DETECTOR_PACK_VERSION, default_detector_pack
 from .models import (
     EvidenceField,
     MAX_METADATA_ENTRIES,
@@ -14,6 +14,7 @@ from .models import (
     MAX_METADATA_STRING_CHARS,
     MAX_TEXT_FIELD_CHARS,
     MemoryOperation,
+    RFC3339_TIMESTAMP_PATTERN,
     RecommendedDisposition,
     RiskCategory,
     RiskSeverity,
@@ -86,8 +87,9 @@ def event_schema() -> dict[str, Any]:
             "event_id": {"type": "string", "minLength": 1, "maxLength": 96},
             "timestamp": {
                 "type": "string",
-                "description": "RFC 3339 / ISO 8601 timestamp supplied by the adapter.",
+                "description": "RFC 3339 timestamp supplied by the adapter.",
                 "format": "date-time",
+                "pattern": RFC3339_TIMESTAMP_PATTERN,
                 "minLength": 1,
                 "maxLength": 16384,
             },
@@ -318,8 +320,7 @@ def detector_pack_schema() -> dict[str, Any]:
     """Return the MF-04 detector pack metadata schema."""
 
     built_in_detector_definitions = [
-        {"const": definition.to_dict()}
-        for definition in default_detector_pack().definitions
+        definition.to_dict() for definition in default_detector_pack().definitions
     ]
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -329,14 +330,9 @@ def detector_pack_schema() -> dict[str, Any]:
         "additionalProperties": False,
         "required": ["name", "version", "definitions"],
         "properties": {
-            "name": {"type": "string", "minLength": 1},
+            "name": {"const": DETECTOR_PACK_NAME},
             "version": {"const": DETECTOR_PACK_VERSION},
-            "definitions": {
-                "type": "array",
-                "minItems": 1,
-                "uniqueItems": True,
-                "items": {"oneOf": built_in_detector_definitions},
-            },
+            "definitions": {"const": built_in_detector_definitions},
         },
     }
 

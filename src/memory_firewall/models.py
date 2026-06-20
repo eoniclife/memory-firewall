@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -20,6 +21,11 @@ MAX_TEXT_FIELD_CHARS = 16_384
 MAX_METADATA_ENTRIES = 64
 MAX_METADATA_KEY_CHARS = 128
 MAX_METADATA_STRING_CHARS = 4_096
+RFC3339_TIMESTAMP_PATTERN = (
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
+    r"(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$"
+)
+_RFC3339_TIMESTAMP_RE = re.compile(RFC3339_TIMESTAMP_PATTERN)
 
 _EVENT_KEYS = frozenset(
     {
@@ -200,11 +206,13 @@ def _require_timestamp(value: Any, field_name: str = "timestamp") -> str:
         allow_empty=False,
         max_chars=MAX_TEXT_FIELD_CHARS,
     )
+    if _RFC3339_TIMESTAMP_RE.fullmatch(timestamp) is None:
+        raise ValueError(f"{field_name} must be an RFC 3339 timestamp")
     normalized = timestamp[:-1] + "+00:00" if timestamp.endswith("Z") else timestamp
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:
-        raise ValueError(f"{field_name} must be an ISO 8601/RFC 3339 timestamp") from exc
+        raise ValueError(f"{field_name} must be an RFC 3339 timestamp") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError(f"{field_name} must include timezone information")
     return timestamp

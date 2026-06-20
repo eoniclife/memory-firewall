@@ -1,6 +1,6 @@
 from typing import Any
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker
 
 from memory_firewall import (
     EvidenceField,
@@ -144,6 +144,53 @@ def test_detector_pack_schema_rejects_mislabeled_builtin_definition() -> None:
     errors = list(Draft202012Validator(detector_pack_schema()).iter_errors(payload))
 
     assert errors
+
+
+def test_event_schema_format_checker_matches_runtime_timestamp_rules() -> None:
+    event = MemoryEvent.from_adapter_payload(
+        {
+            "timestamp": "2026-06-20T14:00:00Z",
+            "actor": "agent:test",
+            "user_or_tenant_scope": "tenant:demo",
+            "source_type": SourceType.TOOL_OUTPUT.value,
+            "source_id": "tool_schema_timestamp",
+            "source_authority": SourceAuthority.TOOL_OBSERVED.value,
+            "raw_or_redacted_content": "The tool returned account owner Alice.",
+            "proposed_memory": "Account owner is Alice.",
+            "operation": MemoryOperation.UPSERT.value,
+            "target_namespace": "crm",
+            "metadata": {"fixture": "timestamp-schema"},
+        }
+    )
+    validator = Draft202012Validator(
+        event_schema(),
+        format_checker=FormatChecker(),
+    )
+
+    validator.validate(event.to_dict())
+    for timestamp in (
+        "2026-W25-6T14:00:00+00:00",
+        "2026-06-20 14:00:00+00:00",
+        "2026-06-20T14:00:00+0000",
+    ):
+        payload = event.to_dict()
+        payload["timestamp"] = timestamp
+
+        assert list(validator.iter_errors(payload))
+
+
+def test_detector_pack_schema_rejects_subset_reorder_and_custom_name() -> None:
+    payload: dict[str, Any] = default_detector_pack().to_dict()
+    definitions = list(payload["definitions"])
+    validator = Draft202012Validator(detector_pack_schema())
+
+    subset_payload = {**payload, "definitions": definitions[:1]}
+    reordered_payload = {**payload, "definitions": list(reversed(definitions))}
+    custom_name_payload = {**payload, "name": "custom"}
+
+    assert list(validator.iter_errors(subset_payload))
+    assert list(validator.iter_errors(reordered_payload))
+    assert list(validator.iter_errors(custom_name_payload))
 
 
 def test_adapter_schema_rejects_supported_and_unsupported_overlap() -> None:
