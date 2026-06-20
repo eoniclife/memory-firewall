@@ -22,11 +22,19 @@ from .models import (
     SourceAuthority,
     SourceType,
 )
+from .review import (
+    OVERRIDE_RECEIPT_ID_PREFIX,
+    REVIEW_ITEM_ID_PREFIX,
+    REVIEW_VERSION,
+    TRUSTED_READ_PREVIEW_STATUS,
+    OverrideDecision,
+    ReviewItemStatus,
+)
 from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-06"
+SCHEMA_VERSION = "mf-07"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -653,6 +661,237 @@ def scan_result_schema() -> dict[str, Any]:
     }
 
 
+def _review_finding_summary_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "finding_id",
+            "risk_category",
+            "severity",
+            "recommended_disposition",
+            "detector_name",
+            "explanation",
+            "limitations",
+        ],
+        "properties": {
+            "finding_id": {"type": "string", "minLength": 1, "maxLength": 96},
+            "risk_category": {"type": "string", "enum": _enum_values(RiskCategory)},
+            "severity": {"type": "string", "enum": _enum_values(RiskSeverity)},
+            "recommended_disposition": {
+                "type": "string",
+                "enum": _enum_values(RecommendedDisposition),
+            },
+            "detector_name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_TEXT_FIELD_CHARS,
+            },
+            "explanation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_TEXT_FIELD_CHARS,
+            },
+            "limitations": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+            },
+        },
+    }
+
+
+def override_receipt_schema() -> dict[str, Any]:
+    """Return the MF-07 local override receipt schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/override-receipt.mf-07.json",
+        "title": "OverrideReceipt",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "receipt_id",
+            "receipt_version",
+            "item_id",
+            "item_hash_sha256",
+            "decision",
+            "reason",
+            "reviewer",
+            "event_id",
+            "assertion_id",
+            "finding_ids",
+            "metadata",
+        ],
+        "properties": {
+            "receipt_id": {
+                "type": "string",
+                "pattern": f"^{OVERRIDE_RECEIPT_ID_PREFIX}[0-9a-f]{{32}}$",
+            },
+            "receipt_version": {"const": REVIEW_VERSION},
+            "item_id": {
+                "type": "string",
+                "pattern": f"^{REVIEW_ITEM_ID_PREFIX}[0-9a-f]{{32}}$",
+            },
+            "item_hash_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "decision": {"type": "string", "enum": _enum_values(OverrideDecision)},
+            "reason": {"type": "string", "minLength": 1, "maxLength": 2048},
+            "reviewer": {"type": "string", "minLength": 1, "maxLength": 256},
+            "event_id": {"type": "string", "pattern": "^mfev_v1_[0-9a-f]{32}$"},
+            "assertion_id": {
+                "type": "string",
+                "pattern": "^mfassert_v1_[0-9a-f]{32}$",
+            },
+            "finding_ids": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+            },
+            "metadata": _metadata_schema(),
+        },
+    }
+
+
+def _review_item_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "item_id",
+            "item_hash_sha256",
+            "review_version",
+            "source",
+            "line_number",
+            "event_id",
+            "level",
+            "highest_disposition",
+            "finding_count",
+            "contradiction_count",
+            "analysis_id",
+            "trusted_state_action",
+            "assertion",
+            "reason_codes",
+            "finding_summaries",
+            "status",
+            "receipt_id",
+            "metadata",
+        ],
+        "properties": {
+            "item_id": {
+                "type": "string",
+                "pattern": f"^{REVIEW_ITEM_ID_PREFIX}[0-9a-f]{{32}}$",
+            },
+            "item_hash_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "review_version": {"const": REVIEW_VERSION},
+            "source": {"type": "string", "minLength": 1},
+            "line_number": {"type": "integer", "minimum": 1},
+            "event_id": {"type": "string", "pattern": "^mfev_v1_[0-9a-f]{32}$"},
+            "level": {"const": ScanEventLevel.HIGH_RISK.value},
+            "highest_disposition": {
+                "type": "string",
+                "enum": _enum_values(RecommendedDisposition),
+            },
+            "finding_count": {"type": "integer", "minimum": 0},
+            "contradiction_count": {"type": "integer", "minimum": 0},
+            "analysis_id": {
+                "type": "string",
+                "pattern": "^mfanalysis_v1_[0-9a-f]{32}$",
+            },
+            "trusted_state_action": {
+                "type": "string",
+                "enum": _enum_values(TrustedStateAction),
+            },
+            "assertion": state_assertion_schema(),
+            "reason_codes": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+            },
+            "finding_summaries": {
+                "type": "array",
+                "items": _review_finding_summary_schema(),
+            },
+            "status": {"type": "string", "enum": _enum_values(ReviewItemStatus)},
+            "receipt_id": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "pattern": f"^{OVERRIDE_RECEIPT_ID_PREFIX}[0-9a-f]{{32}}$",
+                    },
+                    {"type": "null"},
+                ],
+            },
+            "metadata": _metadata_schema(),
+        },
+    }
+
+
+def review_queue_schema() -> dict[str, Any]:
+    """Return the MF-07 local review queue schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/review-queue.mf-07.json",
+        "title": "ReviewQueue",
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["review_version", "items", "receipts", "metadata"],
+        "properties": {
+            "review_version": {"const": REVIEW_VERSION},
+            "items": {"type": "array", "items": _review_item_schema()},
+            "receipts": {"type": "array", "items": override_receipt_schema()},
+            "metadata": _metadata_schema(),
+        },
+    }
+
+
+def trusted_read_preview_schema() -> dict[str, Any]:
+    """Return the MF-07 local trusted-read preview schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/trusted-read-preview.mf-07.json",
+        "title": "TrustedReadPreview",
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["preview_version", "items", "limitations", "metadata"],
+        "properties": {
+            "preview_version": {"const": REVIEW_VERSION},
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "item_id",
+                        "event_id",
+                        "assertion",
+                        "receipt",
+                        "preview_status",
+                    ],
+                    "properties": {
+                        "item_id": {
+                            "type": "string",
+                            "pattern": f"^{REVIEW_ITEM_ID_PREFIX}[0-9a-f]{{32}}$",
+                        },
+                        "event_id": {
+                            "type": "string",
+                            "pattern": "^mfev_v1_[0-9a-f]{32}$",
+                        },
+                        "assertion": state_assertion_schema(),
+                        "receipt": override_receipt_schema(),
+                        "preview_status": {"const": TRUSTED_READ_PREVIEW_STATUS},
+                    },
+                },
+            },
+            "limitations": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+            },
+            "metadata": _metadata_schema(),
+        },
+    }
+
+
 def schema_bundle() -> dict[str, Any]:
     """Return the complete public contract bundle."""
 
@@ -670,6 +909,9 @@ def schema_bundle() -> dict[str, Any]:
         "state_assertion_schema": state_assertion_schema(),
         "state_analysis_schema": state_analysis_schema(),
         "scan_result_schema": scan_result_schema(),
+        "review_queue_schema": review_queue_schema(),
+        "override_receipt_schema": override_receipt_schema(),
+        "trusted_read_preview_schema": trusted_read_preview_schema(),
         "default_detector_pack": default_detector_pack().to_dict(),
         "risk_taxonomy": [item.to_dict() for item in risk_taxonomy()],
         "claim_budget": claim_budget().to_dict(),

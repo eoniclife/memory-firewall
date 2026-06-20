@@ -17,7 +17,7 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["package"] == "memory-firewall"
-    assert payload["schema_version"] == "mf-06"
+    assert payload["schema_version"] == "mf-07"
 
 
 def test_adapter_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
@@ -67,6 +67,27 @@ def test_scan_result_schema_command_prints_json(capsys) -> None:  # type: ignore
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["title"] == "ScanResult"
+
+
+def test_review_queue_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "review-queue"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "ReviewQueue"
+
+
+def test_override_receipt_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "override-receipt"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "OverrideReceipt"
+
+
+def test_trusted_read_preview_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "trusted-read-preview"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "TrustedReadPreview"
 
 
 def test_risks_json_command(capsys) -> None:  # type: ignore[no-untyped-def]
@@ -314,3 +335,114 @@ def test_watch_json_command_reads_stdin(capsys, monkeypatch) -> None:  # type: i
     payload = json.loads(captured.out)
     assert payload["record_type"] == "event"
     assert payload["event"]["event_id"] == event.event_id
+
+
+def test_review_cli_enqueue_allow_reject_and_preview(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    trusted = MemoryEvent.from_adapter_payload(
+        {
+            "timestamp": "2026-06-20T15:00:00Z",
+            "actor": "agent:test",
+            "user_or_tenant_scope": "tenant:demo",
+            "source_type": SourceType.TOOL_OUTPUT.value,
+            "source_id": "erp:payout:trusted",
+            "source_authority": SourceAuthority.SIGNED_RECORD.value,
+            "raw_or_redacted_content": "Signed ERP field value is Alice.",
+            "proposed_memory": "Signed ERP field value is Alice.",
+            "operation": "upsert",
+            "target_namespace": "finance",
+            "metadata": {
+                "state_subject": "tenant:demo:finance:payout",
+                "state_predicate": "payment_recipient",
+                "state_object": "Alice",
+            },
+        }
+    )
+    candidate = MemoryEvent.from_adapter_payload(
+        {
+            "timestamp": "2026-06-20T15:00:00Z",
+            "actor": "agent:test",
+            "user_or_tenant_scope": "tenant:demo",
+            "source_type": SourceType.UNKNOWN.value,
+            "source_id": "unknown",
+            "source_authority": SourceAuthority.UNTRUSTED.value,
+            "raw_or_redacted_content": "Untrusted note says Mallory.",
+            "proposed_memory": "Untrusted note says Mallory.",
+            "operation": "upsert",
+            "target_namespace": "finance",
+            "metadata": {
+                "state_subject": "tenant:demo:finance:payout",
+                "state_predicate": "payment_recipient",
+                "state_object": "Mallory",
+            },
+        }
+    )
+    events_path = tmp_path / "events.jsonl"
+    queue_path = tmp_path / "review-queue.json"
+    events_path.write_text(
+        "\n".join(json.dumps(event.to_dict()) for event in (trusted, candidate))
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "review",
+                "enqueue",
+                str(events_path),
+                "--queue",
+                str(queue_path),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    enqueue_payload = json.loads(captured.out)
+    assert enqueue_payload["enqueued_items"] == 1
+    item_id = enqueue_payload["queue"]["items"][0]["item_id"]
+
+    assert main(["review", "list", "--queue", str(queue_path), "--json"]) == 0
+    captured = capsys.readouterr()
+    list_payload = json.loads(captured.out)
+    assert list_payload["items"][0]["status"] == "pending"
+
+    assert (
+        main(
+            [
+                "review",
+                "allow",
+                "--queue",
+                str(queue_path),
+                "--item-id",
+                item_id,
+                "--reason",
+                "verified against ERP",
+                "--reviewer",
+                "aditya",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    receipt_payload = json.loads(captured.out)
+    assert receipt_payload["decision"] == "allow"
+
+    assert (
+        main(
+            [
+                "review",
+                "trusted-read-preview",
+                "--queue",
+                str(queue_path),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    preview_payload = json.loads(captured.out)
+    assert preview_payload["items"][0]["item_id"] == item_id
+    assert preview_payload["items"][0]["preview_status"] == "allowed_preview_only"
+    assert preview_payload["metadata"]["trusted_ledger_write"] is False

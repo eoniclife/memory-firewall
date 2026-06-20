@@ -17,6 +17,15 @@ from .detectors import default_detector_pack, run_detectors
 from .doctor import doctor_report
 from .models import MemoryEvent
 from .policy import DISPOSITION_ORDER, SEVERITY_ORDER, PolicyConfig
+from .review import (
+    ReviewQueue,
+    allow_review_item,
+    enqueue_scan_result,
+    load_review_queue,
+    reject_review_item,
+    save_review_queue,
+    trusted_read_preview,
+)
 from .scan import (
     SCAN_VERSION,
     exit_code_for_summary,
@@ -30,11 +39,14 @@ from .schema import (
     evidence_span_schema,
     event_schema,
     finding_schema,
+    override_receipt_schema,
     policy_schema,
+    review_queue_schema,
     scan_result_schema,
     schema_bundle,
     state_analysis_schema,
     state_assertion_schema,
+    trusted_read_preview_schema,
 )
 from .taxonomy import risk_taxonomy
 from .version import __version__
@@ -71,6 +83,9 @@ def _build_parser() -> argparse.ArgumentParser:
             "state-assertion",
             "state-analysis",
             "scan-result",
+            "review-queue",
+            "override-receipt",
+            "trusted-read-preview",
             "bundle",
         ),
         help="Schema to print.",
@@ -156,6 +171,86 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     watch_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    review_parser = subparsers.add_parser(
+        "review",
+        help="Manage a local review queue for high-risk scan events.",
+    )
+    review_subparsers = review_parser.add_subparsers(
+        dest="review_command",
+        required=True,
+    )
+
+    review_enqueue_parser = review_subparsers.add_parser(
+        "enqueue",
+        help="Scan a MemoryEvent JSONL file and enqueue high-risk events.",
+    )
+    review_enqueue_parser.add_argument(
+        "path",
+        help="Path to a line-delimited MemoryEvent JSON file.",
+    )
+    review_enqueue_parser.add_argument(
+        "--queue",
+        required=True,
+        help="Path to the local review queue JSON file.",
+    )
+    review_enqueue_parser.add_argument(
+        "--existing-assertions",
+        help=(
+            "Optional path to a JSON array of MemoryStateAssertion records to "
+            "seed scan-local contradiction checks."
+        ),
+    )
+    review_enqueue_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    review_list_parser = review_subparsers.add_parser(
+        "list",
+        help="List local review queue items.",
+    )
+    review_list_parser.add_argument(
+        "--queue",
+        required=True,
+        help="Path to the local review queue JSON file.",
+    )
+    review_list_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    for command_name in ("allow", "reject"):
+        decision_parser = review_subparsers.add_parser(
+            command_name,
+            help=f"{command_name.title()} one local review item.",
+        )
+        decision_parser.add_argument(
+            "--queue",
+            required=True,
+            help="Path to the local review queue JSON file.",
+        )
+        decision_parser.add_argument(
+            "--item-id",
+            required=True,
+            help="Review item id to decide.",
+        )
+        decision_parser.add_argument(
+            "--reason",
+            required=True,
+            help="Non-empty reason for the local override decision.",
+        )
+        decision_parser.add_argument(
+            "--reviewer",
+            default="local-reviewer",
+            help="Reviewer label for the local override receipt.",
+        )
+        decision_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    review_preview_parser = review_subparsers.add_parser(
+        "trusted-read-preview",
+        help="Print a local preview over allowed review items.",
+    )
+    review_preview_parser.add_argument(
+        "--queue",
+        required=True,
+        help="Path to the local review queue JSON file.",
+    )
+    review_preview_parser.add_argument("--json", action="store_true", dest="as_json")
+
     conformance_parser = subparsers.add_parser(
         "conformance", help="Run adapter conformance probes."
     )
@@ -202,6 +297,12 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = state_analysis_schema()
     elif name == "scan-result":
         payload = scan_result_schema()
+    elif name == "review-queue":
+        payload = review_queue_schema()
+    elif name == "override-receipt":
+        payload = override_receipt_schema()
+    elif name == "trusted-read-preview":
+        payload = trusted_read_preview_schema()
     else:
         payload = schema_bundle()
     _print_json(payload, stdout)
@@ -387,6 +488,136 @@ def _run_watch(
     )
 
 
+def _load_or_empty_review_queue(path: str) -> ReviewQueue:
+    queue_path = Path(path)
+    if not queue_path.exists():
+        return ReviewQueue.empty()
+    return load_review_queue(queue_path)
+
+
+def _run_review_enqueue(
+    path: str,
+    queue_path: str,
+    existing_assertions_path: str | None,
+    as_json: bool,
+    stdout: TextIO,
+) -> int:
+    queue = _load_or_empty_review_queue(queue_path)
+    before = len(queue.items)
+    with Path(path).open("r", encoding="utf-8") as handle:
+        result = scan_jsonl_events(
+            handle,
+            source=path,
+            existing_assertions=_load_existing_assertions(existing_assertions_path),
+        )
+    updated = enqueue_scan_result(result, queue)
+    save_review_queue(queue_path, updated)
+    enqueued = len(updated.items) - before
+    if as_json:
+        _print_json(
+            {
+                "review_version": updated.review_version,
+                "queue_path": queue_path,
+                "enqueued_items": enqueued,
+                "queue": updated.to_dict(),
+                "scan_summary": result.summary.to_dict(),
+            },
+            stdout,
+        )
+    else:
+        print(
+            f"{updated.review_version}: {enqueued} item(s) enqueued; "
+            f"{len(updated.items)} total",
+            file=stdout,
+        )
+    return 0
+
+
+def _run_review_list(queue_path: str, as_json: bool, stdout: TextIO) -> int:
+    queue = _load_or_empty_review_queue(queue_path)
+    if as_json:
+        _print_json(queue.to_dict(), stdout)
+    else:
+        print(
+            f"{queue.review_version}: {len(queue.items)} review item(s)",
+            file=stdout,
+        )
+        for item in queue.items:
+            print(
+                f"- {item.status.value} item={item.item_id} "
+                f"event={item.event_id} findings={item.finding_count}",
+                file=stdout,
+            )
+    return 0
+
+
+def _receipt_for_item(queue: ReviewQueue, item_id: str) -> dict[str, Any]:
+    for item in queue.items:
+        if item.item_id != item_id:
+            continue
+        if item.receipt_id is None:
+            raise ValueError("review item has no receipt")
+        for receipt in queue.receipts:
+            if receipt.receipt_id == item.receipt_id:
+                return receipt.to_dict()
+    raise ValueError(f"review item not found: {item_id}")
+
+
+def _run_review_decision(
+    command: str,
+    queue_path: str,
+    item_id: str,
+    reason: str,
+    reviewer: str,
+    as_json: bool,
+    stdout: TextIO,
+) -> int:
+    queue = _load_or_empty_review_queue(queue_path)
+    if command == "allow":
+        updated = allow_review_item(
+            queue,
+            item_id,
+            reason=reason,
+            reviewer=reviewer,
+        )
+    else:
+        updated = reject_review_item(
+            queue,
+            item_id,
+            reason=reason,
+            reviewer=reviewer,
+        )
+    save_review_queue(queue_path, updated)
+    receipt = _receipt_for_item(updated, item_id)
+    if as_json:
+        _print_json(receipt, stdout)
+    else:
+        print(
+            f"{receipt['decision']} item={item_id} receipt={receipt['receipt_id']}",
+            file=stdout,
+        )
+    return 0
+
+
+def _run_review_preview(queue_path: str, as_json: bool, stdout: TextIO) -> int:
+    queue = _load_or_empty_review_queue(queue_path)
+    preview = trusted_read_preview(queue)
+    if as_json:
+        _print_json(preview.to_dict(), stdout)
+    else:
+        print(
+            f"{preview.preview_version}: {len(preview.items)} preview item(s)",
+            file=stdout,
+        )
+        for item in preview.items:
+            print(
+                f"- {item.preview_status} item={item.item_id} "
+                f"event={item.event_id}",
+                file=stdout,
+            )
+    return 0
+
+
 def _run_conformance(adapter: str, as_json: bool, stdout: TextIO) -> int:
     if adapter != "demo":
         raise ValueError(f"unsupported adapter: {adapter}")
@@ -460,6 +691,40 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.stdin,
             sys.stdout,
         )
+    if args.command == "review":
+        review_command = str(args.review_command)
+        if review_command == "enqueue":
+            existing_assertions_path = (
+                None
+                if args.existing_assertions is None
+                else str(args.existing_assertions)
+            )
+            return _run_review_enqueue(
+                str(args.path),
+                str(args.queue),
+                existing_assertions_path,
+                bool(args.as_json),
+                sys.stdout,
+            )
+        if review_command == "list":
+            return _run_review_list(str(args.queue), bool(args.as_json), sys.stdout)
+        if review_command in {"allow", "reject"}:
+            return _run_review_decision(
+                review_command,
+                str(args.queue),
+                str(args.item_id),
+                str(args.reason),
+                str(args.reviewer),
+                bool(args.as_json),
+                sys.stdout,
+            )
+        if review_command == "trusted-read-preview":
+            return _run_review_preview(
+                str(args.queue),
+                bool(args.as_json),
+                sys.stdout,
+            )
+        parser.error(f"unknown review command: {review_command}")
     if args.command == "conformance":
         return _run_conformance(str(args.adapter), bool(args.as_json), sys.stdout)
     parser.error(f"unknown command: {args.command}")
