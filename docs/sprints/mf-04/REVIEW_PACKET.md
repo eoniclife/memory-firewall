@@ -45,6 +45,8 @@ Allowed:
   `MemoryEvent` JSON.
 - Detector findings are anchored to event fields with structured evidence spans.
   Secret-like findings anchor only a non-secret label or prefix.
+- Detector evidence spans avoid quoting MF-04-recognized secret-like values
+  when another detector match overlaps those values.
 - Detector findings include explicit limitations and policy recommendations.
 
 Not allowed:
@@ -59,6 +61,8 @@ Not allowed:
 - Are detector outputs deterministic for the same event?
 - Do findings validate against the MF-04 schemas and the supplied event?
 - Does every detector include explicit limitations?
+- Can any detector evidence span republish a recognized secret-like value when
+  the matched text also triggers another risk category?
 - Does the benign fixture stay quiet?
 - Do docs avoid scanner, quarantine, trusted-read, adapter, enforcement, and
   universal-poisoning claims?
@@ -142,6 +146,9 @@ Reviewer state:
   - provenance-gap evidence should not point at unrelated content text.
 - Fix-pass changes address those findings with regression coverage:
   - secret-like evidence spans now anchor only non-secret labels or prefixes;
+  - all detector evidence spans are sanitized when an overlapping
+    MF-04-recognized secret-like value is present, with regression coverage for
+    instruction, authority-change, and repetition findings;
   - `DetectorPack.run()` rejects events whose `event_id` does not match
     canonical event material;
   - `MemoryEvent` validates timezone-bearing ISO 8601/RFC 3339 timestamps;
@@ -149,5 +156,43 @@ Reviewer state:
     metadata;
   - provenance-gap findings can anchor to source fields even when content text
     is empty.
+
+Additional local gates after the global evidence-span redaction regression:
+
+- focused detector/model/CLI/schema tests:
+  `UV_PROJECT_ENVIRONMENT=.venv-312 uv run --python 3.12 --extra dev pytest tests/test_detectors.py tests/test_models.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
+  - `63` passed
+- full test suite:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev pytest -q`
+  - `83` passed
+- type checks:
+  - `UV_PROJECT_ENVIRONMENT=.venv-310 uv run --python 3.10 --extra dev mypy src tests`
+  - `UV_PROJECT_ENVIRONMENT=.venv-311 uv run --python 3.11 --extra dev mypy src tests`
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-mypy uv run --python 3.12 --extra dev mypy src tests`
+  - all reported `Success: no issues found in 20 source files`
+- bytecode smoke:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev python -m compileall -q src tests`
+- CLI/schema JSON smokes:
+  - `memory-firewall doctor --json`
+  - `memory-firewall schema bundle`
+  - `memory-firewall schema detector-pack`
+  - `memory-firewall schema detector-result`
+  - `memory-firewall policy --json`
+  - `memory-firewall conformance demo --json`
+  - `memory-firewall detect --event - --json`
+  - JSON validation passed and the sample secret value was absent from detector
+    output
+- whitespace check:
+  `git diff --check`
+- package build and metadata:
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-full uv build --out-dir /tmp/memory-firewall-mf04-dist`
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev twine check /tmp/memory-firewall-mf04-dist/*`
+- installed-wheel smoke:
+  - installed `memory_firewall-0.1.0.dev4-py3-none-any.whl` into
+    `/tmp/memory-firewall-mf04-wheel-venv`
+  - `uv pip check --python /tmp/memory-firewall-mf04-wheel-venv/bin/python`
+  - installed console script smokes for `doctor`, detector schemas, and
+    `detect --event - --json`
+  - installed-wheel detector output was checked for sample secret absence
 
 CI and exact-head re-review are pending after the fix-pass push.

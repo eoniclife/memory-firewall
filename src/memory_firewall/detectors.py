@@ -236,6 +236,72 @@ def _event_text(event: MemoryEvent, field: EvidenceField) -> str:
     raise ValueError(f"unsupported event text field: {field}")
 
 
+_SECRET_LABEL_PATTERN = re.compile(
+    r"\b(?P<label>api[_\-\s]?key|secret|password|passwd|token)\b"
+    r"\s*[:=]\s*(?P<secret>[A-Za-z0-9_\-]{8,})",
+    re.I,
+)
+_OPENAI_KEY_PATTERN = re.compile(r"\bsk-[A-Za-z0-9_\-]{16,}\b")
+_CARD_LIKE_PATTERN = re.compile(r"\b(?:\d[ -]*?){13,19}\b")
+
+
+def _secret_value_ranges(text: str) -> tuple[tuple[int, int], ...]:
+    ranges: list[tuple[int, int]] = []
+    for match in _SECRET_LABEL_PATTERN.finditer(text):
+        ranges.append(match.span("secret"))
+    for pattern in (_OPENAI_KEY_PATTERN, _CARD_LIKE_PATTERN):
+        for match in pattern.finditer(text):
+            ranges.append(match.span())
+    return tuple(ranges)
+
+
+def _overlaps_secret_value(
+    ranges: tuple[tuple[int, int], ...], start: int, end: int
+) -> bool:
+    return any(
+        start < secret_end and end > secret_start
+        for secret_start, secret_end in ranges
+    )
+
+
+def _safe_evidence_span(
+    field: EvidenceField,
+    text: str,
+    start: int,
+    end: int,
+) -> EvidenceSpan | None:
+    ranges = _secret_value_ranges(text)
+    if not _overlaps_secret_value(ranges, start, end):
+        return EvidenceSpan(field, start, end, text[start:end])
+
+    cursor = start
+    candidates: list[tuple[int, int]] = []
+    for secret_start, secret_end in ranges:
+        if secret_end <= start or secret_start >= end:
+            continue
+        safe_start = cursor
+        safe_end = max(start, min(secret_start, end))
+        if safe_end > safe_start:
+            candidates.append((safe_start, safe_end))
+        cursor = max(cursor, min(secret_end, end))
+    if cursor < end:
+        candidates.append((cursor, end))
+
+    for safe_start, safe_end in sorted(
+        candidates,
+        key=lambda item: (item[1] - item[0], -item[0]),
+        reverse=True,
+    ):
+        quote = text[safe_start:safe_end].strip()
+        if len(quote) < 3 or not any(char.isalnum() for char in quote):
+            continue
+        offset = text[safe_start:safe_end].index(quote)
+        anchored_start = safe_start + offset
+        anchored_end = anchored_start + len(quote)
+        return EvidenceSpan(field, anchored_start, anchored_end, quote)
+    return None
+
+
 def _first_nonempty_span(event: MemoryEvent) -> EvidenceSpan | None:
     for field in (
         EvidenceField.PROPOSED_MEMORY,
@@ -244,7 +310,7 @@ def _first_nonempty_span(event: MemoryEvent) -> EvidenceSpan | None:
         text = _event_text(event, field)
         if text:
             end = min(len(text), 160)
-            return EvidenceSpan(field, 0, end, text[:end])
+            return _safe_evidence_span(field, text, 0, end)
     return None
 
 
@@ -257,12 +323,9 @@ def _regex_span(event: MemoryEvent, patterns: tuple[re.Pattern[str], ...]) -> Ev
         for pattern in patterns:
             match = pattern.search(text)
             if match is not None and match.end() > match.start():
-                return EvidenceSpan(
-                    source_field=field,
-                    start=match.start(),
-                    end=match.end(),
-                    quote=text[match.start() : match.end()],
-                )
+                span = _safe_evidence_span(field, text, match.start(), match.end())
+                if span is not None:
+                    return span
     return None
 
 
@@ -450,15 +513,6 @@ def _detect_scope_privacy(
     )
 
 
-_SECRET_LABEL_PATTERN = re.compile(
-    r"\b(?P<label>api[_\-\s]?key|secret|password|passwd|token)\b"
-    r"\s*[:=]\s*(?P<secret>[A-Za-z0-9_\-]{8,})",
-    re.I,
-)
-_OPENAI_KEY_PATTERN = re.compile(r"\bsk-[A-Za-z0-9_\-]{16,}\b")
-_CARD_LIKE_PATTERN = re.compile(r"\b(?:\d[ -]*?){13,19}\b")
-
-
 def _secret_evidence_span(event: MemoryEvent) -> EvidenceSpan | None:
     for field in (
         EvidenceField.PROPOSED_MEMORY,
@@ -521,13 +575,17 @@ def _detect_repetition_pattern(
         EvidenceField.RAW_OR_REDACTED_CONTENT,
     ):
         seen: dict[str, tuple[str, int, int]] = {}
-        for sentence, start, end in _sentence_spans(_event_text(event, field)):
+        text = _event_text(event, field)
+        for sentence, start, end in _sentence_spans(text):
             normalized = re.sub(r"\s+", " ", sentence.lower()).strip()
             if normalized in seen:
+                span = _safe_evidence_span(field, text, start, end)
+                if span is None:
+                    return None
                 return _make_finding(
                     definition,
                     event,
-                    EvidenceSpan(field, start, end, sentence),
+                    span,
                     severity=RiskSeverity.INFORMATIONAL,
                     confidence=0.62,
                     explanation=(
