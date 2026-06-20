@@ -1,6 +1,7 @@
 # Memory Firewall Product Contract
 
-MF-01 freezes the product surface before detectors and adapters are added.
+MF-02 freezes the product surface before detectors and real framework adapters
+are added.
 
 ## Category Line
 
@@ -17,34 +18,38 @@ agent-memory-contracts
     Public semantic trust kernel and conformance layer
 
 memory-firewall
-    Public contract and CLI shell for the future scanner/demo/reference guardrail
+    Public contract, conformance probe, and CLI shell for the future
+    scanner/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-01 Allows
+## MF-02 Allows
 
 - package installation;
 - `memory-firewall doctor`;
 - machine-readable event and finding schemas;
+- deterministic event IDs for adapter-emitted `MemoryEvent` payloads;
+- machine-readable adapter capability reports;
+- a conformance probe over the built-in fake adapter;
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-01 Does Not Allow
+## MF-02 Does Not Allow
 
 - real memory scanning claims;
 - detector claims;
 - quarantine claims;
-- adapter claims;
+- real framework adapter claims;
 - enforcement claims;
 - claims that Memory Firewall determines objective truth;
 - claims that Memory Firewall secures an entire agent.
 
 ## Operation Vocabulary
 
-The MF-01 `operation` enum is contract vocabulary for adapter/event producers:
+The MF-02 `operation` enum is contract vocabulary for adapter/event producers:
 
 - `create`
 - `update`
@@ -52,7 +57,7 @@ The MF-01 `operation` enum is contract vocabulary for adapter/event producers:
 - `delete`
 - `import`
 
-These values describe the proposed memory operation. They do not mean MF-01 can
+These values describe the proposed memory operation. They do not mean MF-02 can
 execute, block, import from a framework, or enforce that operation.
 
 ## Canonical Event Surface
@@ -71,6 +76,27 @@ The canonical `MemoryEvent` contains:
 - `operation`
 - `target_namespace`
 - `metadata`
+
+MF-02 also defines deterministic event IDs. The id is derived from the
+canonical event material excluding `event_id`, using a stable JSON encoding and
+SHA-256 digest prefix. This gives adapters a reproducible id surface without
+claiming semantic truth or deduplication across incompatible memory systems.
+
+## Adapter Capability Surface
+
+The adapter capability report contains:
+
+- `adapter_name`
+- `adapter_version`
+- `supported_capabilities`
+- `unsupported_capabilities`
+- `notes`
+- `metadata`
+
+Capabilities are disclosure vocabulary, not proof of enforcement. The built-in
+demo adapter exists only to exercise the conformance contract. It does not wrap
+Mem0, Letta, Zep, Hermes, GBrain, LangChain, a vector store, SQLite, or any
+other real memory substrate.
 
 ## Risk Categories
 
@@ -98,7 +124,7 @@ Disposition describes the recommended handling:
 - `review`
 - `quarantine`
 
-`quarantine` is only an advisory disposition value in MF-01. This sprint does
+`quarantine` is only an advisory disposition value in MF-02. This sprint does
 not implement quarantine storage or enforcement.
 
 Use `poisoned` only for attack demos or confirmed adversarial cases. Normal

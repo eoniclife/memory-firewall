@@ -1,12 +1,22 @@
-"""Typed public models for the MF-01 Memory Firewall contract."""
+"""Typed public models for the Memory Firewall contract."""
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Mapping
+from types import MappingProxyType
+from typing import Any, Mapping, TypeVar
 
 JSONScalar = str | int | float | bool | None
+EVENT_ID_PREFIX = "mfev_v1_"
+MAX_EVENT_ID_CHARS = 96
+MAX_TEXT_FIELD_CHARS = 16_384
+MAX_METADATA_ENTRIES = 64
+MAX_METADATA_KEY_CHARS = 128
+MAX_METADATA_STRING_CHARS = 4_096
 
 _EVENT_KEYS = frozenset(
     {
@@ -40,6 +50,8 @@ _FINDING_KEYS = frozenset(
         "limitations",
     }
 )
+
+EnumT = TypeVar("EnumT", bound=Enum)
 
 
 class SourceType(str, Enum):
@@ -79,7 +91,7 @@ class MemoryOperation(str, Enum):
 
 
 class RiskCategory(str, Enum):
-    """Risk categories frozen by MF-01."""
+    """Risk categories frozen for the public contract."""
 
     PROVENANCE_GAP = "provenance_gap"
     INSTRUCTION_INJECTION = "instruction_injection"
@@ -108,14 +120,33 @@ class RecommendedDisposition(str, Enum):
     QUARANTINE = "quarantine"
 
 
-def _coerce_metadata(value: Mapping[str, JSONScalar] | None) -> dict[str, JSONScalar]:
-    metadata = dict(value or {})
+def _coerce_metadata(value: Mapping[str, JSONScalar]) -> dict[str, JSONScalar]:
+    if not isinstance(value, Mapping):
+        raise TypeError("metadata must be a mapping")
+    metadata = dict(value)
+    if len(metadata) > MAX_METADATA_ENTRIES:
+        raise ValueError(f"metadata may contain at most {MAX_METADATA_ENTRIES} entries")
     for key, item in metadata.items():
         if not isinstance(key, str):
             raise TypeError("metadata keys must be strings")
+        if len(key) > MAX_METADATA_KEY_CHARS:
+            raise ValueError(
+                f"metadata keys may contain at most {MAX_METADATA_KEY_CHARS} characters"
+            )
         if item is not None and not isinstance(item, (str, int, float, bool)):
             raise TypeError(f"metadata[{key!r}] must be a JSON scalar")
+        if isinstance(item, float) and not math.isfinite(item):
+            raise ValueError(f"metadata[{key!r}] must be a finite JSON number")
+        if isinstance(item, str) and len(item) > MAX_METADATA_STRING_CHARS:
+            raise ValueError(
+                f"metadata[{key!r}] may contain at most "
+                f"{MAX_METADATA_STRING_CHARS} characters"
+            )
     return metadata
+
+
+def _freeze_metadata(value: Mapping[str, JSONScalar]) -> Mapping[str, JSONScalar]:
+    return MappingProxyType(_coerce_metadata(value))
 
 
 def _reject_unknown_fields(
@@ -127,11 +158,61 @@ def _reject_unknown_fields(
         raise ValueError(f"{label} contains unknown field(s): {joined}")
 
 
+def _require_string(
+    value: Any, field_name: str, *, allow_empty: bool = False, max_chars: int
+) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{field_name} must be a string")
+    if not allow_empty and not value:
+        raise ValueError(f"{field_name} must not be empty")
+    if len(value) > max_chars:
+        raise ValueError(f"{field_name} may contain at most {max_chars} characters")
+    return value
+
+
+def _coerce_enum(enum_type: type[EnumT], value: Any, field_name: str) -> EnumT:
+    if isinstance(value, enum_type):
+        return value
+    if not isinstance(value, str):
+        raise TypeError(f"{field_name} must be a string")
+    try:
+        return enum_type(value)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} has unsupported value: {value}") from exc
+
+
+def _canonical_json(value: Mapping[str, Any]) -> str:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+
+
+def compute_memory_event_id(value: Mapping[str, Any]) -> str:
+    """Return the deterministic event id for a MemoryEvent-like payload.
+
+    The id is derived from all canonical event fields except `event_id`, so the
+    same adapter payload produces the same id across processes and Python
+    versions.
+    """
+
+    payload = dict(value)
+    payload["event_id"] = "_pending_event_id"
+    event = MemoryEvent.from_dict(payload)
+    canonical = event.to_dict()
+    canonical.pop("event_id")
+    digest = hashlib.sha256(_canonical_json(canonical).encode("utf-8")).hexdigest()
+    return f"{EVENT_ID_PREFIX}{digest[:32]}"
+
+
 @dataclass(frozen=True, slots=True)
 class MemoryEvent:
     """Canonical event proposed by adapters or event proxies.
 
-    MF-01 defines the shape only. Later sprints may add readers, detectors, and
+    MF-02 defines the shape only. Later sprints may add readers, detectors, and
     adapters that emit this event; this model does not claim to scan or enforce.
     """
 
@@ -147,6 +228,57 @@ class MemoryEvent:
     operation: MemoryOperation
     target_namespace: str
     metadata: Mapping[str, JSONScalar] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _require_string(
+            self.event_id, "event_id", allow_empty=False, max_chars=MAX_EVENT_ID_CHARS
+        )
+        _require_string(
+            self.timestamp,
+            "timestamp",
+            allow_empty=False,
+            max_chars=MAX_TEXT_FIELD_CHARS,
+        )
+        _require_string(
+            self.actor, "actor", allow_empty=False, max_chars=MAX_TEXT_FIELD_CHARS
+        )
+        _require_string(
+            self.user_or_tenant_scope,
+            "user_or_tenant_scope",
+            allow_empty=False,
+            max_chars=MAX_TEXT_FIELD_CHARS,
+        )
+        if not isinstance(self.source_type, SourceType):
+            raise TypeError("source_type must be a SourceType")
+        _require_string(
+            self.source_id,
+            "source_id",
+            allow_empty=False,
+            max_chars=MAX_TEXT_FIELD_CHARS,
+        )
+        if not isinstance(self.source_authority, SourceAuthority):
+            raise TypeError("source_authority must be a SourceAuthority")
+        _require_string(
+            self.raw_or_redacted_content,
+            "raw_or_redacted_content",
+            allow_empty=True,
+            max_chars=MAX_TEXT_FIELD_CHARS,
+        )
+        _require_string(
+            self.proposed_memory,
+            "proposed_memory",
+            allow_empty=True,
+            max_chars=MAX_TEXT_FIELD_CHARS,
+        )
+        if not isinstance(self.operation, MemoryOperation):
+            raise TypeError("operation must be a MemoryOperation")
+        _require_string(
+            self.target_namespace,
+            "target_namespace",
+            allow_empty=False,
+            max_chars=MAX_TEXT_FIELD_CHARS,
+        )
+        object.__setattr__(self, "metadata", _freeze_metadata(self.metadata))
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable dictionary."""
@@ -166,25 +298,82 @@ class MemoryEvent:
             "metadata": _coerce_metadata(self.metadata),
         }
 
+    def expected_event_id(self) -> str:
+        """Return the deterministic id implied by this event's canonical fields."""
+
+        return compute_memory_event_id(self.to_dict())
+
+    def has_expected_event_id(self) -> bool:
+        """Return whether `event_id` matches the deterministic adapter id."""
+
+        return self.event_id == self.expected_event_id()
+
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "MemoryEvent":
         """Build an event from a JSON-like dictionary."""
 
         _reject_unknown_fields(value, _EVENT_KEYS, "MemoryEvent")
         return cls(
-            event_id=str(value["event_id"]),
-            timestamp=str(value["timestamp"]),
-            actor=str(value["actor"]),
-            user_or_tenant_scope=str(value["user_or_tenant_scope"]),
-            source_type=SourceType(str(value["source_type"])),
-            source_id=str(value["source_id"]),
-            source_authority=SourceAuthority(str(value["source_authority"])),
-            raw_or_redacted_content=str(value["raw_or_redacted_content"]),
-            proposed_memory=str(value["proposed_memory"]),
-            operation=MemoryOperation(str(value["operation"])),
-            target_namespace=str(value["target_namespace"]),
+            event_id=_require_string(
+                value["event_id"],
+                "event_id",
+                allow_empty=False,
+                max_chars=MAX_EVENT_ID_CHARS,
+            ),
+            timestamp=_require_string(
+                value["timestamp"],
+                "timestamp",
+                allow_empty=False,
+                max_chars=MAX_TEXT_FIELD_CHARS,
+            ),
+            actor=_require_string(
+                value["actor"], "actor", allow_empty=False, max_chars=MAX_TEXT_FIELD_CHARS
+            ),
+            user_or_tenant_scope=_require_string(
+                value["user_or_tenant_scope"],
+                "user_or_tenant_scope",
+                allow_empty=False,
+                max_chars=MAX_TEXT_FIELD_CHARS,
+            ),
+            source_type=_coerce_enum(SourceType, value["source_type"], "source_type"),
+            source_id=_require_string(
+                value["source_id"],
+                "source_id",
+                allow_empty=False,
+                max_chars=MAX_TEXT_FIELD_CHARS,
+            ),
+            source_authority=_coerce_enum(
+                SourceAuthority, value["source_authority"], "source_authority"
+            ),
+            raw_or_redacted_content=_require_string(
+                value["raw_or_redacted_content"],
+                "raw_or_redacted_content",
+                allow_empty=True,
+                max_chars=MAX_TEXT_FIELD_CHARS,
+            ),
+            proposed_memory=_require_string(
+                value["proposed_memory"],
+                "proposed_memory",
+                allow_empty=True,
+                max_chars=MAX_TEXT_FIELD_CHARS,
+            ),
+            operation=_coerce_enum(MemoryOperation, value["operation"], "operation"),
+            target_namespace=_require_string(
+                value["target_namespace"],
+                "target_namespace",
+                allow_empty=False,
+                max_chars=MAX_TEXT_FIELD_CHARS,
+            ),
             metadata=_coerce_metadata(value["metadata"]),
         )
+
+    @classmethod
+    def from_adapter_payload(cls, value: Mapping[str, Any]) -> "MemoryEvent":
+        """Build an event and fill `event_id` from canonical adapter material."""
+
+        payload = dict(value)
+        payload["event_id"] = compute_memory_event_id(payload)
+        return cls.from_dict(payload)
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,8 +393,56 @@ class MemoryFinding:
     limitations: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        _require_string(
+            self.finding_id,
+            "finding_id",
+            allow_empty=False,
+            max_chars=MAX_TEXT_FIELD_CHARS,
+        )
+        _require_string(
+            self.event_id,
+            "event_id",
+            allow_empty=False,
+            max_chars=MAX_TEXT_FIELD_CHARS,
+        )
+        if not isinstance(self.risk_category, RiskCategory):
+            raise TypeError("risk_category must be a RiskCategory")
+        if not isinstance(self.severity, RiskSeverity):
+            raise TypeError("severity must be a RiskSeverity")
         if not 0 <= self.confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
+        _require_string(
+            self.evidence_span,
+            "evidence_span",
+            allow_empty=True,
+            max_chars=MAX_TEXT_FIELD_CHARS,
+        )
+        _require_string(
+            self.detector_name,
+            "detector_name",
+            allow_empty=False,
+            max_chars=MAX_TEXT_FIELD_CHARS,
+        )
+        _require_string(
+            self.detector_version,
+            "detector_version",
+            allow_empty=False,
+            max_chars=MAX_TEXT_FIELD_CHARS,
+        )
+        _require_string(
+            self.explanation,
+            "explanation",
+            allow_empty=False,
+            max_chars=MAX_TEXT_FIELD_CHARS,
+        )
+        if not isinstance(self.recommended_disposition, RecommendedDisposition):
+            raise TypeError(
+                "recommended_disposition must be a RecommendedDisposition"
+            )
+        if isinstance(self.limitations, str) or not isinstance(self.limitations, tuple):
+            raise TypeError("limitations must be a tuple of strings")
+        if any(not isinstance(item, str) for item in self.limitations):
+            raise TypeError("limitations must contain only strings")
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable dictionary."""
@@ -238,17 +475,51 @@ class MemoryFinding:
             raise TypeError("limitations must contain only strings")
         _reject_unknown_fields(value, _FINDING_KEYS, "MemoryFinding")
         return cls(
-            finding_id=str(value["finding_id"]),
-            event_id=str(value["event_id"]),
-            risk_category=RiskCategory(str(value["risk_category"])),
-            severity=RiskSeverity(str(value["severity"])),
+            finding_id=_require_string(
+                value["finding_id"],
+                "finding_id",
+                allow_empty=False,
+                max_chars=MAX_TEXT_FIELD_CHARS,
+            ),
+            event_id=_require_string(
+                value["event_id"],
+                "event_id",
+                allow_empty=False,
+                max_chars=MAX_TEXT_FIELD_CHARS,
+            ),
+            risk_category=_coerce_enum(
+                RiskCategory, value["risk_category"], "risk_category"
+            ),
+            severity=_coerce_enum(RiskSeverity, value["severity"], "severity"),
             confidence=float(value["confidence"]),
-            evidence_span=str(value["evidence_span"]),
-            detector_name=str(value["detector_name"]),
-            detector_version=str(value["detector_version"]),
-            explanation=str(value["explanation"]),
-            recommended_disposition=RecommendedDisposition(
-                str(value["recommended_disposition"])
+            evidence_span=_require_string(
+                value["evidence_span"],
+                "evidence_span",
+                allow_empty=True,
+                max_chars=MAX_TEXT_FIELD_CHARS,
+            ),
+            detector_name=_require_string(
+                value["detector_name"],
+                "detector_name",
+                allow_empty=False,
+                max_chars=MAX_TEXT_FIELD_CHARS,
+            ),
+            detector_version=_require_string(
+                value["detector_version"],
+                "detector_version",
+                allow_empty=False,
+                max_chars=MAX_TEXT_FIELD_CHARS,
+            ),
+            explanation=_require_string(
+                value["explanation"],
+                "explanation",
+                allow_empty=False,
+                max_chars=MAX_TEXT_FIELD_CHARS,
+            ),
+            recommended_disposition=_coerce_enum(
+                RecommendedDisposition,
+                value["recommended_disposition"],
+                "recommended_disposition",
             ),
             limitations=limitations,
         )

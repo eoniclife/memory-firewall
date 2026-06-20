@@ -1,4 +1,7 @@
+from typing import Any, cast
+
 from memory_firewall import (
+    EVENT_ID_PREFIX,
     MemoryEvent,
     MemoryFinding,
     MemoryOperation,
@@ -7,7 +10,24 @@ from memory_firewall import (
     RiskSeverity,
     SourceAuthority,
     SourceType,
+    compute_memory_event_id,
 )
+
+
+def _event_payload_without_id() -> dict[str, object]:
+    return {
+        "timestamp": "2026-06-20T14:00:00Z",
+        "actor": "agent:test",
+        "user_or_tenant_scope": "tenant:demo",
+        "source_type": "user_message",
+        "source_id": "msg_001",
+        "source_authority": "user_asserted",
+        "raw_or_redacted_content": "Remember that payout approvals go to Alice.",
+        "proposed_memory": "Payout approvals go to Alice.",
+        "operation": "create",
+        "target_namespace": "finance",
+        "metadata": {"redacted": False, "trace_id": "trace_001"},
+    }
 
 
 def test_memory_event_round_trips_to_dict() -> None:
@@ -30,6 +50,42 @@ def test_memory_event_round_trips_to_dict() -> None:
     assert payload["source_type"] == "user_message"
     assert payload["operation"] == "create"
     assert MemoryEvent.from_dict(payload) == event
+
+
+def test_memory_event_computes_stable_event_id() -> None:
+    payload = _event_payload_without_id()
+    event = MemoryEvent.from_adapter_payload(payload)
+    reordered = dict(payload)
+    reordered["metadata"] = {"trace_id": "trace_001", "redacted": False}
+    with_bad_id = dict(reordered)
+    with_bad_id["event_id"] = object()
+
+    assert event.event_id.startswith(EVENT_ID_PREFIX)
+    assert event.event_id == compute_memory_event_id(reordered)
+    assert event.event_id == compute_memory_event_id(with_bad_id)
+    assert event.has_expected_event_id()
+    assert MemoryEvent.from_dict(event.to_dict()) == event
+
+
+def test_memory_event_rejects_unstable_event_id_for_conformance() -> None:
+    payload = _event_payload_without_id()
+    payload["event_id"] = "evt_wrong"
+    event = MemoryEvent.from_dict(payload)
+
+    assert not event.has_expected_event_id()
+
+
+def test_memory_event_metadata_is_immutable_after_id_computation() -> None:
+    event = MemoryEvent.from_adapter_payload(_event_payload_without_id())
+
+    try:
+        cast(Any, event.metadata)["new"] = "changed"
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("MemoryEvent metadata remained mutable")
+
+    assert event.has_expected_event_id()
 
 
 def test_memory_event_rejects_unknown_fields() -> None:
@@ -104,6 +160,30 @@ def test_memory_event_rejects_non_string_metadata_keys() -> None:
         raise AssertionError("MemoryEvent accepted a non-string metadata key")
 
 
+def test_memory_event_rejects_oversized_memory() -> None:
+    payload = _event_payload_without_id()
+    payload["proposed_memory"] = "x" * 16_385
+
+    try:
+        MemoryEvent.from_adapter_payload(payload)
+    except ValueError as exc:
+        assert "proposed_memory" in str(exc)
+    else:
+        raise AssertionError("MemoryEvent accepted oversized proposed_memory")
+
+
+def test_memory_event_rejects_non_json_metadata_number() -> None:
+    payload = _event_payload_without_id()
+    payload["metadata"] = {"bad": float("nan")}
+
+    try:
+        MemoryEvent.from_adapter_payload(payload)
+    except ValueError as exc:
+        assert "finite JSON number" in str(exc)
+    else:
+        raise AssertionError("MemoryEvent accepted NaN metadata")
+
+
 def test_memory_finding_round_trips_to_dict() -> None:
     finding = MemoryFinding(
         finding_id="find_001",
@@ -166,6 +246,27 @@ def test_memory_finding_rejects_string_limitations() -> None:
         assert "limitations" in str(exc)
     else:
         raise AssertionError("MemoryFinding accepted string limitations")
+
+
+def test_memory_finding_rejects_direct_string_limitations() -> None:
+    try:
+        MemoryFinding(
+            finding_id="find_001",
+            event_id="evt_001",
+            risk_category=RiskCategory.PROVENANCE_GAP,
+            severity=RiskSeverity.SUSPICIOUS,
+            confidence=0.4,
+            evidence_span="unknown source",
+            detector_name="demo",
+            detector_version="0.1.0",
+            explanation="The source is unknown.",
+            recommended_disposition=RecommendedDisposition.REVIEW,
+            limitations="not-a-list",  # type: ignore[arg-type]
+        )
+    except TypeError as exc:
+        assert "limitations" in str(exc)
+    else:
+        raise AssertionError("MemoryFinding accepted direct string limitations")
 
 
 def test_memory_finding_requires_limitations_field() -> None:

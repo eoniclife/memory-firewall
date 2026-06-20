@@ -14,14 +14,17 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository is in MF-01: product shell and contract freeze.
+This repository is in MF-02: adapter-facing contract and conformance probe.
 
 Implemented now:
 
 - typed canonical `MemoryEvent` and `MemoryFinding` models;
+- deterministic `MemoryEvent` IDs derived from canonical event material;
+- adapter capability report model and schema;
+- a built-in fake adapter conformance probe;
 - machine-readable event/finding schemas;
 - risk taxonomy and claim budget;
-- CLI commands for `doctor`, `schema`, `risks`, and `claims`;
+- CLI commands for `doctor`, `schema`, `risks`, `claims`, and `conformance`;
 - CI, package metadata, and review packet.
 
 Not implemented yet:
@@ -38,8 +41,10 @@ Not implemented yet:
 ```bash
 uv run --python 3.12 --extra dev memory-firewall doctor --json
 uv run --python 3.12 --extra dev memory-firewall schema bundle
+uv run --python 3.12 --extra dev memory-firewall schema adapter
 uv run --python 3.12 --extra dev memory-firewall risks
 uv run --python 3.12 --extra dev memory-firewall claims
+uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 ```
 
 ## Product Boundary
@@ -49,10 +54,11 @@ objective truth, secure an entire agent, stop every poisoning attack, or
 automatically approve important memories.
 
 The broader public launch target is an installable local artifact for scanning
-and explaining integrity risks in persistent agent memory. MF-01 does not ship
-that scanner. It freezes the contract, CLI, and claim boundary that later
-scanner and adapter work must obey. Enforcement claims are allowed only where
-Memory Firewall controls the relevant read/write chokepoint.
+and explaining integrity risks in persistent agent memory. MF-02 does not ship
+that scanner. It freezes the event identity, adapter capability, conformance,
+CLI, and claim boundary that later scanner and adapter work must obey.
+Enforcement claims are allowed only where Memory Firewall controls the relevant
+read/write chokepoint.
 
 ## Relationship To Agent Memory Contracts
 

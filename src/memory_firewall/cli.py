@@ -8,9 +8,16 @@ import sys
 from collections.abc import Sequence
 from typing import Any, TextIO
 
+from .adapters import demo_memory_adapter
 from .claim_budget import claim_budget
+from .conformance import run_adapter_conformance
 from .doctor import doctor_report
-from .schema import event_schema, finding_schema, schema_bundle
+from .schema import (
+    adapter_capability_report_schema,
+    event_schema,
+    finding_schema,
+    schema_bundle,
+)
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
@@ -34,7 +41,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "schema", help="Print machine-readable contract schemas."
     )
     schema_parser.add_argument(
-        "name", choices=("event", "finding", "bundle"), help="Schema to print."
+        "name",
+        choices=("event", "finding", "adapter", "bundle"),
+        help="Schema to print.",
     )
 
     risks_parser = subparsers.add_parser("risks", help="Print risk taxonomy.")
@@ -42,6 +51,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
     claims_parser = subparsers.add_parser("claims", help="Print claim budget.")
     claims_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    conformance_parser = subparsers.add_parser(
+        "conformance", help="Run adapter conformance probes."
+    )
+    conformance_parser.add_argument(
+        "adapter",
+        choices=("demo",),
+        help="Adapter probe to run. MF-02 ships only the built-in demo adapter.",
+    )
+    conformance_parser.add_argument("--json", action="store_true", dest="as_json")
 
     return parser
 
@@ -63,6 +82,8 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = event_schema()
     elif name == "finding":
         payload = finding_schema()
+    elif name == "adapter":
+        payload = adapter_capability_report_schema()
     else:
         payload = schema_bundle()
     _print_json(payload, stdout)
@@ -93,6 +114,24 @@ def _run_claims(as_json: bool, stdout: TextIO) -> int:
     return 0
 
 
+def _run_conformance(adapter: str, as_json: bool, stdout: TextIO) -> int:
+    if adapter != "demo":
+        raise ValueError(f"unsupported adapter: {adapter}")
+    result = run_adapter_conformance(demo_memory_adapter())
+    if as_json:
+        _print_json(result.to_dict(), stdout)
+    else:
+        status = "passed" if result.passed else "failed"
+        print(
+            f"{result.adapter_name} {result.adapter_version}: {status}",
+            file=stdout,
+        )
+        for check in result.checks:
+            marker = "ok" if check.passed else "fail"
+            print(f"- {marker}: {check.name}: {check.message}", file=stdout)
+    return 0 if result.passed else 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the Memory Firewall CLI."""
 
@@ -106,6 +145,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_risks(bool(args.as_json), sys.stdout)
     if args.command == "claims":
         return _run_claims(bool(args.as_json), sys.stdout)
+    if args.command == "conformance":
+        return _run_conformance(str(args.adapter), bool(args.as_json), sys.stdout)
     parser.error(f"unknown command: {args.command}")
     return 2
 
