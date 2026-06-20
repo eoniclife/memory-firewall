@@ -111,13 +111,13 @@ Final local gates:
 
 - focused MF-09/schema/CLI tests:
   `uv run --python 3.12 --extra dev pytest tests/test_proxy.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
-  - `43` passed
+  - `44` passed
 - focused type checks:
   `uv run --python 3.12 --extra dev mypy src/memory_firewall/proxy.py src/memory_firewall/reference_store.py src/memory_firewall/schema.py src/memory_firewall/cli.py src/memory_firewall/__init__.py tests/test_proxy.py tests/test_cli.py tests/test_schema_and_taxonomy.py`
   - `Success: no issues found in 8 source files`
 - full test suite:
   `uv run --python 3.12 --extra dev pytest -q`
-  - `139` passed
+  - `140` passed
 - type checks:
   - `UV_PROJECT_ENVIRONMENT=.venv-310-mypy uv run --python 3.10 --extra dev mypy src tests`
   - `UV_PROJECT_ENVIRONMENT=.venv-311-mypy uv run --python 3.11 --extra dev mypy src tests`
