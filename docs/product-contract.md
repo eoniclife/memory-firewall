@@ -35,7 +35,7 @@ private orchestration layer
 - machine-readable detector pack and detector result schemas;
 - deterministic event IDs for adapter-emitted `MemoryEvent` payloads;
 - deterministic finding IDs for `MemoryFinding` payloads;
-- structured evidence spans anchored to event text fields;
+- structured evidence spans anchored to event fields;
 - deterministic policy recommendation defaults;
 - deterministic heuristic detectors over one supplied `MemoryEvent` JSON
   document;
@@ -120,7 +120,9 @@ The structured `EvidenceSpan` contains:
 
 Evidence spans can be validated against a supplied `MemoryEvent`; the quoted
 text must exactly match the referenced event field and character offsets.
-This proves local anchoring only. It does not prove the quoted text is true.
+For secret-like findings, the span intentionally anchors only a non-secret
+label or prefix rather than reproducing the complete matched secret. This proves
+local anchoring only. It does not prove the quoted text is true.
 
 ## Policy Surface
 

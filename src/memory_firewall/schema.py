@@ -87,6 +87,7 @@ def event_schema() -> dict[str, Any]:
             "timestamp": {
                 "type": "string",
                 "description": "RFC 3339 / ISO 8601 timestamp supplied by the adapter.",
+                "format": "date-time",
                 "minLength": 1,
                 "maxLength": 16384,
             },

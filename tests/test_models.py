@@ -201,6 +201,30 @@ def test_memory_event_rejects_oversized_memory() -> None:
         raise AssertionError("MemoryEvent accepted oversized proposed_memory")
 
 
+def test_memory_event_rejects_malformed_timestamp() -> None:
+    payload = _event_payload_without_id()
+    payload["timestamp"] = "not-a-timestamp"
+
+    try:
+        MemoryEvent.from_adapter_payload(payload)
+    except ValueError as exc:
+        assert "timestamp" in str(exc)
+    else:
+        raise AssertionError("MemoryEvent accepted malformed timestamp")
+
+
+def test_memory_event_rejects_timestamp_without_timezone() -> None:
+    payload = _event_payload_without_id()
+    payload["timestamp"] = "2026-06-20T14:00:00"
+
+    try:
+        MemoryEvent.from_adapter_payload(payload)
+    except ValueError as exc:
+        assert "timezone" in str(exc)
+    else:
+        raise AssertionError("MemoryEvent accepted timestamp without timezone")
+
+
 def test_memory_event_rejects_non_json_metadata_number() -> None:
     payload = _event_payload_without_id()
     payload["metadata"] = {"bad": float("nan")}
@@ -253,6 +277,18 @@ def test_memory_finding_validates_evidence_span_against_event() -> None:
     )
 
     finding.validate_against_event(event)
+
+
+def test_evidence_span_can_anchor_to_source_authority() -> None:
+    event = MemoryEvent.from_adapter_payload(_event_payload_without_id())
+    span = EvidenceSpan(
+        source_field=EvidenceField.SOURCE_AUTHORITY,
+        start=0,
+        end=len(SourceAuthority.USER_ASSERTED.value),
+        quote=SourceAuthority.USER_ASSERTED.value,
+    )
+
+    span.validate_against_event(event)
 
 
 def test_memory_finding_rejects_evidence_span_mismatch() -> None:

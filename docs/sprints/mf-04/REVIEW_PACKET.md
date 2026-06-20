@@ -43,7 +43,8 @@ Allowed:
 
 - Memory Firewall runs deterministic local detectors over supplied
   `MemoryEvent` JSON.
-- Detector findings are anchored to event text with structured evidence spans.
+- Detector findings are anchored to event fields with structured evidence spans.
+  Secret-like findings anchor only a non-secret label or prefix.
 - Detector findings include explicit limitations and policy recommendations.
 
 Not allowed:
@@ -90,12 +91,12 @@ Base before draft PR creation:
 
 Passed locally:
 
-- focused detector/CLI/schema tests:
-  `UV_PROJECT_ENVIRONMENT=.venv-312 uv run --python 3.12 --extra dev pytest tests/test_detectors.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
-  - `27` passed
+- focused detector/model/CLI/schema tests after GPT Pro fix-pass:
+  `UV_PROJECT_ENVIRONMENT=.venv-312 uv run --python 3.12 --extra dev pytest tests/test_detectors.py tests/test_models.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
+  - `61` passed
 - full test suite:
   `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev pytest -q`
-  - `71` passed
+  - `81` passed
 - type checks:
   - `UV_PROJECT_ENVIRONMENT=.venv-310 uv run --python 3.10 --extra dev mypy src tests`
   - `UV_PROJECT_ENVIRONMENT=.venv-311 uv run --python 3.11 --extra dev mypy src tests`
@@ -111,6 +112,8 @@ Passed locally:
   - `memory-firewall policy --json`
   - `memory-firewall conformance demo --json`
   - `memory-firewall detect --event - --json`
+  - JSON validation asserted that the sample secret value was absent from the
+    serialized detector result
 - whitespace check:
   `git diff --check`
 - package build:
@@ -123,5 +126,28 @@ Passed locally:
   - `uv pip check --python /tmp/memory-firewall-mf04-wheel-venv/bin/python`
   - installed console script smokes for `doctor`, detector schemas, and
     `detect --event - --json`
+  - installed-wheel detector output was checked for full-secret absence
 
-Reviewer and CI results are pending draft PR creation.
+Reviewer state:
+
+- Independent Codex reviewer accepted initial head
+  `0fcb5666de45285468ba33c617c5f7ca44f880ed`.
+- GPT Pro requested changes on initial head
+  `0fcb5666de45285468ba33c617c5f7ca44f880ed`:
+  - secret detector must not republish full credentials/card-like values;
+  - detector execution must reject noncanonical event IDs;
+  - timestamp syntax must be runtime-validated;
+  - custom detector-pack metadata must not create schema-invalid or mislabeled
+    results;
+  - provenance-gap evidence should not point at unrelated content text.
+- Fix-pass changes address those findings with regression coverage:
+  - secret-like evidence spans now anchor only non-secret labels or prefixes;
+  - `DetectorPack.run()` rejects events whose `event_id` does not match
+    canonical event material;
+  - `MemoryEvent` validates timezone-bearing ISO 8601/RFC 3339 timestamps;
+  - custom pack definitions are type-checked and bound to built-in detector
+    metadata;
+  - provenance-gap findings can anchor to source fields even when content text
+    is empty.
+
+CI and exact-head re-review are pending after the fix-pass push.

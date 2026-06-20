@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Callable
 
 from .models import (
@@ -38,13 +38,15 @@ class DetectorDefinition:
     limitations: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        if not self.name:
+        if not isinstance(self.name, str) or not self.name:
             raise ValueError("name must not be empty")
-        if not self.version:
+        if not isinstance(self.version, str) or not self.version:
             raise ValueError("version must not be empty")
+        if self.version != DETECTOR_VERSION:
+            raise ValueError(f"version must be {DETECTOR_VERSION}")
         if not isinstance(self.risk_category, RiskCategory):
             raise TypeError("risk_category must be a RiskCategory")
-        if not self.description:
+        if not isinstance(self.description, str) or not self.description:
             raise ValueError("description must not be empty")
         if isinstance(self.limitations, str) or not isinstance(self.limitations, tuple):
             raise TypeError("limitations must be a tuple of strings")
@@ -74,18 +76,30 @@ class DetectorPack:
     definitions: tuple[DetectorDefinition, ...]
 
     def __post_init__(self) -> None:
-        if not self.name:
+        if not isinstance(self.name, str) or not self.name:
             raise ValueError("name must not be empty")
-        if not self.version:
+        if not isinstance(self.version, str) or not self.version:
             raise ValueError("version must not be empty")
+        if self.version != DETECTOR_PACK_VERSION:
+            raise ValueError(f"version must be {DETECTOR_PACK_VERSION}")
+        if isinstance(self.definitions, str) or not isinstance(self.definitions, tuple):
+            raise TypeError("definitions must be a tuple of DetectorDefinition objects")
         if not self.definitions:
             raise ValueError("definitions must not be empty")
         seen: set[str] = set()
         for definition in self.definitions:
+            if not isinstance(definition, DetectorDefinition):
+                raise TypeError("definitions must contain DetectorDefinition objects")
             if definition.name in seen:
                 raise ValueError(f"duplicate detector definition: {definition.name}")
             if definition.name not in _DETECTOR_FUNCTIONS:
                 raise ValueError(f"no detector implementation for {definition.name}")
+            canonical = _DETECTOR_DEFINITION_BY_NAME[definition.name]
+            if definition != canonical:
+                raise ValueError(
+                    f"detector definition must match built-in metadata: "
+                    f"{definition.name}"
+                )
             seen.add(definition.name)
 
     def to_dict(self) -> dict[str, object]:
@@ -100,6 +114,8 @@ class DetectorPack:
     def run(self, event: MemoryEvent) -> "DetectorResult":
         """Run every detector in pack order against one event."""
 
+        if not event.has_expected_event_id():
+            raise ValueError("event_id must match canonical event material")
         findings: list[MemoryFinding] = []
         for definition in self.definitions:
             finding = _DETECTOR_FUNCTIONS[definition.name](definition, event)
@@ -207,7 +223,17 @@ def _make_finding(
 def _event_text(event: MemoryEvent, field: EvidenceField) -> str:
     if field == EvidenceField.PROPOSED_MEMORY:
         return event.proposed_memory
-    return event.raw_or_redacted_content
+    if field == EvidenceField.RAW_OR_REDACTED_CONTENT:
+        return event.raw_or_redacted_content
+    if field == EvidenceField.TIMESTAMP:
+        return event.timestamp
+    if field == EvidenceField.SOURCE_TYPE:
+        return event.source_type.value
+    if field == EvidenceField.SOURCE_ID:
+        return event.source_id
+    if field == EvidenceField.SOURCE_AUTHORITY:
+        return event.source_authority.value
+    raise ValueError(f"unsupported event text field: {field}")
 
 
 def _first_nonempty_span(event: MemoryEvent) -> EvidenceSpan | None:
@@ -251,9 +277,14 @@ def _detect_provenance_gap(
     vague_source_id = event.source_id.strip().lower() in {"unknown", "n/a", "none"}
     if not (low_authority or unknown_source or vague_source_id):
         return None
-    span = _first_nonempty_span(event)
-    if span is None:
-        return None
+    if low_authority:
+        source_field = EvidenceField.SOURCE_AUTHORITY
+    elif unknown_source:
+        source_field = EvidenceField.SOURCE_TYPE
+    else:
+        source_field = EvidenceField.SOURCE_ID
+    quote = _event_text(event, source_field)
+    span = EvidenceSpan(source_field, 0, len(quote), quote)
     return _make_finding(
         definition,
         event,
@@ -332,7 +363,12 @@ _TEMPORAL_LANGUAGE = (
 
 def _event_day(event: MemoryEvent) -> date | None:
     try:
-        return date.fromisoformat(event.timestamp[:10])
+        normalized = (
+            event.timestamp[:-1] + "+00:00"
+            if event.timestamp.endswith("Z")
+            else event.timestamp
+        )
+        return datetime.fromisoformat(normalized).date()
     except ValueError:
         return None
 
@@ -414,17 +450,42 @@ def _detect_scope_privacy(
     )
 
 
-_SECRET_PATTERNS = (
-    re.compile(r"\b(api[_\-\s]?key|secret|password|passwd|token)\b\s*[:=]\s*[A-Za-z0-9_\-]{8,}", re.I),
-    re.compile(r"\bsk-[A-Za-z0-9_\-]{16,}\b"),
-    re.compile(r"\b(?:\d[ -]*?){13,19}\b"),
+_SECRET_LABEL_PATTERN = re.compile(
+    r"\b(?P<label>api[_\-\s]?key|secret|password|passwd|token)\b"
+    r"\s*[:=]\s*(?P<secret>[A-Za-z0-9_\-]{8,})",
+    re.I,
 )
+_OPENAI_KEY_PATTERN = re.compile(r"\bsk-[A-Za-z0-9_\-]{16,}\b")
+_CARD_LIKE_PATTERN = re.compile(r"\b(?:\d[ -]*?){13,19}\b")
+
+
+def _secret_evidence_span(event: MemoryEvent) -> EvidenceSpan | None:
+    for field in (
+        EvidenceField.PROPOSED_MEMORY,
+        EvidenceField.RAW_OR_REDACTED_CONTENT,
+    ):
+        text = _event_text(event, field)
+        label_match = _SECRET_LABEL_PATTERN.search(text)
+        if label_match is not None:
+            start, end = label_match.span("label")
+            return EvidenceSpan(field, start, end, text[start:end])
+        key_match = _OPENAI_KEY_PATTERN.search(text)
+        if key_match is not None:
+            start = key_match.start()
+            end = min(start + 3, key_match.end())
+            return EvidenceSpan(field, start, end, text[start:end])
+        card_match = _CARD_LIKE_PATTERN.search(text)
+        if card_match is not None:
+            start = card_match.start()
+            end = min(start + 4, card_match.end())
+            return EvidenceSpan(field, start, end, text[start:end])
+    return None
 
 
 def _detect_secret_pattern(
     definition: DetectorDefinition, event: MemoryEvent
 ) -> MemoryFinding | None:
-    span = _regex_span(event, _SECRET_PATTERNS)
+    span = _secret_evidence_span(event)
     if span is None:
         return None
     return _make_finding(
@@ -434,7 +495,8 @@ def _detect_secret_pattern(
         severity=RiskSeverity.HIGH_IMPACT,
         confidence=0.93,
         explanation=(
-            "The memory contains a secret-like or credential-like pattern."
+            "The memory contains a secret-like or credential-like pattern. "
+            "The evidence span anchors only a non-secret label or prefix."
         ),
         recommended_disposition=RecommendedDisposition.QUARANTINE,
     )
@@ -538,6 +600,7 @@ _DETECTOR_DEFINITIONS: tuple[DetectorDefinition, ...] = (
         limitations=(
             "Pattern heuristic only.",
             "Does not guarantee complete secret detection.",
+            "Evidence span intentionally avoids quoting the full matched secret.",
         ),
     ),
     DetectorDefinition(
@@ -551,6 +614,10 @@ _DETECTOR_DEFINITIONS: tuple[DetectorDefinition, ...] = (
         ),
     ),
 )
+
+_DETECTOR_DEFINITION_BY_NAME: dict[str, DetectorDefinition] = {
+    definition.name: definition for definition in _DETECTOR_DEFINITIONS
+}
 
 _DETECTOR_FUNCTIONS: dict[str, DetectorFn] = {
     "provenance-gap-v1": _detect_provenance_gap,

@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from types import MappingProxyType
 from typing import Any, Mapping, TypeVar
@@ -136,6 +137,10 @@ class EvidenceField(str, Enum):
 
     RAW_OR_REDACTED_CONTENT = "raw_or_redacted_content"
     PROPOSED_MEMORY = "proposed_memory"
+    TIMESTAMP = "timestamp"
+    SOURCE_TYPE = "source_type"
+    SOURCE_ID = "source_id"
+    SOURCE_AUTHORITY = "source_authority"
 
 
 def _coerce_metadata(value: Mapping[str, JSONScalar]) -> dict[str, JSONScalar]:
@@ -186,6 +191,23 @@ def _require_string(
     if len(value) > max_chars:
         raise ValueError(f"{field_name} may contain at most {max_chars} characters")
     return value
+
+
+def _require_timestamp(value: Any, field_name: str = "timestamp") -> str:
+    timestamp = _require_string(
+        value,
+        field_name,
+        allow_empty=False,
+        max_chars=MAX_TEXT_FIELD_CHARS,
+    )
+    normalized = timestamp[:-1] + "+00:00" if timestamp.endswith("Z") else timestamp
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be an ISO 8601/RFC 3339 timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{field_name} must include timezone information")
+    return timestamp
 
 
 def _require_int(value: Any, field_name: str) -> int:
@@ -279,12 +301,7 @@ class MemoryEvent:
         _require_string(
             self.event_id, "event_id", allow_empty=False, max_chars=MAX_EVENT_ID_CHARS
         )
-        _require_string(
-            self.timestamp,
-            "timestamp",
-            allow_empty=False,
-            max_chars=MAX_TEXT_FIELD_CHARS,
-        )
+        object.__setattr__(self, "timestamp", _require_timestamp(self.timestamp))
         _require_string(
             self.actor, "actor", allow_empty=False, max_chars=MAX_TEXT_FIELD_CHARS
         )
@@ -366,12 +383,7 @@ class MemoryEvent:
                 allow_empty=False,
                 max_chars=MAX_EVENT_ID_CHARS,
             ),
-            timestamp=_require_string(
-                value["timestamp"],
-                "timestamp",
-                allow_empty=False,
-                max_chars=MAX_TEXT_FIELD_CHARS,
-            ),
+            timestamp=_require_timestamp(value["timestamp"]),
             actor=_require_string(
                 value["actor"], "actor", allow_empty=False, max_chars=MAX_TEXT_FIELD_CHARS
             ),
@@ -470,6 +482,14 @@ class EvidenceSpan:
             return event.raw_or_redacted_content
         if self.source_field == EvidenceField.PROPOSED_MEMORY:
             return event.proposed_memory
+        if self.source_field == EvidenceField.TIMESTAMP:
+            return event.timestamp
+        if self.source_field == EvidenceField.SOURCE_TYPE:
+            return event.source_type.value
+        if self.source_field == EvidenceField.SOURCE_ID:
+            return event.source_id
+        if self.source_field == EvidenceField.SOURCE_AUTHORITY:
+            return event.source_authority.value
         raise ValueError(f"unsupported evidence source field: {self.source_field}")
 
     def validate_against_event(self, event: MemoryEvent) -> None:
