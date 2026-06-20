@@ -111,3 +111,19 @@ Fix-pass after self-review:
 - `compileall`, `doctor --json`, `schema bundle`, `schema policy`,
   `policy --json`, `conformance demo --json`, `git diff --check`, build,
   `twine check`, and installed-wheel smoke all pass after the fix-pass.
+
+Reviewer fix-pass:
+
+- Independent exact-SHA reviewer `Curie` requested changes on head
+  `1d40fe08d6b18f6c6ae432c1a02adeaf0b235212` for three schema/model parity
+  issues: mapping/set `limitations` normalization before finding-id
+  computation, non-current `PolicyRecommendation.policy_version`, and falsey
+  non-mapping `PolicyConfig.metadata`.
+- The follow-up fix rejects non-array `limitations` before id computation,
+  enforces `policy_version == "mf-03"`, and rejects falsey non-mapping policy
+  metadata instead of normalizing it to `{}`.
+- Python 3.12 tests now pass with `53` tests.
+- mypy still passes for Python `3.10`, `3.11`, and `3.12`.
+- `compileall`, `doctor --json`, `schema bundle`, `schema policy`,
+  `policy --json`, `conformance demo --json`, and `git diff --check` all pass
+  after the reviewer fix-pass.

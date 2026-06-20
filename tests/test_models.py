@@ -340,6 +340,30 @@ def test_memory_finding_rejects_string_limitations() -> None:
         raise AssertionError("MemoryFinding accepted string limitations")
 
 
+def test_memory_finding_rejects_mapping_limitations_before_id_computation() -> None:
+    payload = _finding_payload_without_id()
+    payload["limitations"] = {"same_key": "first"}
+
+    try:
+        MemoryFinding.from_detector_payload(payload)
+    except TypeError as exc:
+        assert "limitations" in str(exc)
+    else:
+        raise AssertionError("MemoryFinding accepted mapping limitations")
+
+
+def test_memory_finding_rejects_set_limitations() -> None:
+    payload = _finding_payload_without_id()
+    payload["limitations"] = {"unordered"}
+
+    try:
+        MemoryFinding.from_detector_payload(payload)
+    except TypeError as exc:
+        assert "limitations" in str(exc)
+    else:
+        raise AssertionError("MemoryFinding accepted set limitations")
+
+
 def test_memory_finding_rejects_direct_string_limitations() -> None:
     try:
         MemoryFinding(

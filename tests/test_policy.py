@@ -118,6 +118,20 @@ def test_policy_recommendation_rejects_empty_reason_code() -> None:
         raise AssertionError("PolicyRecommendation accepted empty reason code")
 
 
+def test_policy_recommendation_rejects_non_current_policy_version() -> None:
+    try:
+        PolicyRecommendation(
+            finding_id="mffind_v1_test",
+            recommended_disposition=RecommendedDisposition.REVIEW,
+            reason_codes=("severity:suspicious",),
+            policy_version="mf-04",
+        )
+    except ValueError as exc:
+        assert "policy_version" in str(exc)
+    else:
+        raise AssertionError("PolicyRecommendation accepted stale policy version")
+
+
 def test_policy_config_rejects_invalid_threshold_order() -> None:
     try:
         PolicyConfig(
@@ -146,3 +160,13 @@ def test_policy_config_rejects_boolean_threshold() -> None:
         assert "high_impact_quarantine_confidence" in str(exc)
     else:
         raise AssertionError("PolicyConfig accepted boolean threshold")
+
+
+def test_policy_config_rejects_falsey_non_mapping_metadata() -> None:
+    for metadata in (cast(Any, []), cast(Any, ""), cast(Any, False), cast(Any, 0)):
+        try:
+            PolicyConfig(metadata=metadata)
+        except TypeError as exc:
+            assert "metadata" in str(exc)
+        else:
+            raise AssertionError("PolicyConfig accepted falsey non-mapping metadata")

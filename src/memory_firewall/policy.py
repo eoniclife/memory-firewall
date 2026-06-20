@@ -29,6 +29,8 @@ DISPOSITION_ORDER: Mapping[RecommendedDisposition, int] = {
     RecommendedDisposition.QUARANTINE: 3,
 }
 
+POLICY_VERSION = "mf-03"
+
 
 def max_disposition(
     left: RecommendedDisposition, right: RecommendedDisposition
@@ -68,7 +70,8 @@ class PolicyConfig:
                 "suspicious_review_confidence must be less than or equal to "
                 "high_impact_quarantine_confidence"
             )
-        object.__setattr__(self, "metadata", _freeze_metadata(self.metadata or {}))
+        metadata = {} if self.metadata is None else self.metadata
+        object.__setattr__(self, "metadata", _freeze_metadata(metadata))
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable policy config."""
@@ -76,7 +79,9 @@ class PolicyConfig:
         return {
             "suspicious_review_confidence": self.suspicious_review_confidence,
             "high_impact_quarantine_confidence": self.high_impact_quarantine_confidence,
-            "metadata": _coerce_metadata(self.metadata or {}),
+            "metadata": _coerce_metadata(
+                {} if self.metadata is None else self.metadata
+            ),
         }
 
 
@@ -87,7 +92,7 @@ class PolicyRecommendation:
     finding_id: str
     recommended_disposition: RecommendedDisposition
     reason_codes: tuple[str, ...]
-    policy_version: str = "mf-03"
+    policy_version: str = POLICY_VERSION
 
     def __post_init__(self) -> None:
         _require_string(self.finding_id, "finding_id", allow_empty=False, max_chars=96)
@@ -107,6 +112,8 @@ class PolicyRecommendation:
             allow_empty=False,
             max_chars=64,
         )
+        if self.policy_version != POLICY_VERSION:
+            raise ValueError(f"policy_version must be {POLICY_VERSION}")
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable policy recommendation."""

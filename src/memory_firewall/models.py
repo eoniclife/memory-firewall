@@ -602,10 +602,13 @@ class MemoryFinding:
 
         raw_limitations = value["limitations"]
         limitations: tuple[str, ...]
-        if isinstance(raw_limitations, str):
+        if (
+            isinstance(raw_limitations, str)
+            or isinstance(raw_limitations, Mapping)
+            or not isinstance(raw_limitations, (list, tuple))
+        ):
             raise TypeError("limitations must be a sequence of strings")
-        else:
-            limitations = tuple(raw_limitations)
+        limitations = tuple(raw_limitations)
         if any(not isinstance(item, str) for item in limitations):
             raise TypeError("limitations must contain only strings")
         _reject_unknown_fields(value, _FINDING_KEYS, "MemoryFinding")
