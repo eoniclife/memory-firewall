@@ -12,6 +12,16 @@ from .conformance import (
     ConformanceResult,
     run_adapter_conformance,
 )
+from .detectors import (
+    DETECTOR_PACK_NAME,
+    DETECTOR_PACK_VERSION,
+    DETECTOR_VERSION,
+    DetectorDefinition,
+    DetectorPack,
+    DetectorResult,
+    default_detector_pack,
+    run_detectors,
+)
 from .models import (
     EVENT_ID_PREFIX,
     FINDING_ID_PREFIX,
@@ -40,6 +50,8 @@ from .policy import (
 )
 from .schema import (
     adapter_capability_report_schema,
+    detector_pack_schema,
+    detector_result_schema,
     evidence_span_schema,
     event_schema,
     finding_schema,
@@ -55,6 +67,12 @@ __all__ = [
     "AdapterCapabilityReport",
     "ConformanceCheckResult",
     "ConformanceResult",
+    "DETECTOR_PACK_NAME",
+    "DETECTOR_PACK_VERSION",
+    "DETECTOR_VERSION",
+    "DetectorDefinition",
+    "DetectorPack",
+    "DetectorResult",
     "EVENT_ID_PREFIX",
     "FINDING_ID_PREFIX",
     "EvidenceField",
@@ -76,6 +94,9 @@ __all__ = [
     "claim_budget",
     "compute_memory_event_id",
     "compute_memory_finding_id",
+    "default_detector_pack",
+    "detector_pack_schema",
+    "detector_result_schema",
     "demo_memory_adapter",
     "DISPOSITION_ORDER",
     "evidence_span_schema",
@@ -88,6 +109,7 @@ __all__ = [
     "recommend_policy",
     "risk_taxonomy",
     "run_adapter_conformance",
+    "run_detectors",
     "SEVERITY_ORDER",
     "schema_bundle",
 ]

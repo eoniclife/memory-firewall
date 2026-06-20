@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memory-firewall"
-version = "0.1.0.dev3"
-description = "Contract and CLI shell for local-first integrity checks on persistent agent memory."
+version = "0.1.0.dev4"
+description = "Local-first contracts and deterministic integrity checks for persistent agent memory."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]

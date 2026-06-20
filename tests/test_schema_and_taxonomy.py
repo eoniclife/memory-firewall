@@ -15,7 +15,10 @@ from memory_firewall import (
     SourceType,
     adapter_capability_report_schema,
     claim_budget,
+    default_detector_pack,
     demo_memory_adapter,
+    detector_pack_schema,
+    detector_result_schema,
     evidence_span_schema,
     event_schema,
     finding_schema,
@@ -65,11 +68,14 @@ def test_finding_schema_uses_frozen_risk_taxonomy() -> None:
 def test_schema_bundle_includes_claim_budget() -> None:
     bundle = schema_bundle()
     budget = claim_budget()
-    assert bundle["schema_version"] == "mf-03"
+    assert bundle["schema_version"] == "mf-04"
     assert bundle["claim_budget"]["allowed"] == list(budget.allowed)
     assert any("Does not scan real stores yet" in item for item in budget.not_allowed)
     assert "adapter_capability_report_schema" in bundle
     assert "policy_schema" in bundle
+    assert "detector_pack_schema" in bundle
+    assert "detector_result_schema" in bundle
+    assert bundle["default_detector_pack"]["version"] == "mf-04"
 
 
 def test_model_outputs_validate_against_exported_schemas() -> None:
@@ -110,6 +116,8 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     Draft202012Validator.check_schema(finding_schema())
     Draft202012Validator.check_schema(adapter_capability_report_schema())
     Draft202012Validator.check_schema(policy_schema())
+    Draft202012Validator.check_schema(detector_pack_schema())
+    Draft202012Validator.check_schema(detector_result_schema())
     Draft202012Validator(event_schema()).validate(event.to_dict())
     Draft202012Validator(evidence_span_schema()).validate(
         finding.evidence_span.to_dict()
@@ -117,6 +125,9 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     Draft202012Validator(finding_schema()).validate(finding.to_dict())
     Draft202012Validator(adapter_capability_report_schema()).validate(
         demo_memory_adapter().capability_report.to_dict()
+    )
+    Draft202012Validator(detector_pack_schema()).validate(
+        default_detector_pack().to_dict()
     )
 
 
