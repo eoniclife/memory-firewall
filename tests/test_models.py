@@ -16,6 +16,7 @@ from memory_firewall import (
     compute_memory_event_id,
     compute_memory_finding_id,
 )
+from memory_firewall.models import MAX_TEXT_FIELD_CHARS
 
 
 def _event_payload_without_id() -> dict[str, object]:
@@ -271,6 +272,34 @@ def test_memory_finding_rejects_evidence_span_mismatch() -> None:
         assert "quote" in str(exc)
     else:
         raise AssertionError("MemoryFinding accepted a mismatched evidence span")
+
+
+def test_evidence_span_rejects_zero_length_quote() -> None:
+    try:
+        EvidenceSpan(
+            source_field=EvidenceField.PROPOSED_MEMORY,
+            start=0,
+            end=0,
+            quote="",
+        )
+    except ValueError as exc:
+        assert "end" in str(exc)
+    else:
+        raise AssertionError("EvidenceSpan accepted zero-length evidence")
+
+
+def test_evidence_span_rejects_offsets_beyond_event_field_limit() -> None:
+    try:
+        EvidenceSpan(
+            source_field=EvidenceField.PROPOSED_MEMORY,
+            start=MAX_TEXT_FIELD_CHARS,
+            end=MAX_TEXT_FIELD_CHARS + 1,
+            quote="x",
+        )
+    except ValueError as exc:
+        assert "start" in str(exc)
+    else:
+        raise AssertionError("EvidenceSpan accepted impossible source offsets")
 
 
 def test_memory_finding_rejects_invalid_confidence() -> None:

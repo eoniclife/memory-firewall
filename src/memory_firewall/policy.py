@@ -102,6 +102,8 @@ class PolicyRecommendation:
             )
         if isinstance(self.reason_codes, str) or not isinstance(self.reason_codes, tuple):
             raise TypeError("reason_codes must be a tuple of strings")
+        if not self.reason_codes:
+            raise ValueError("reason_codes must contain at least one reason")
         if any(not isinstance(item, str) for item in self.reason_codes):
             raise TypeError("reason_codes must contain only strings")
         if any(not item for item in self.reason_codes):

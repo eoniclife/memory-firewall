@@ -118,6 +118,19 @@ def test_policy_recommendation_rejects_empty_reason_code() -> None:
         raise AssertionError("PolicyRecommendation accepted empty reason code")
 
 
+def test_policy_recommendation_rejects_no_reason_codes() -> None:
+    try:
+        PolicyRecommendation(
+            finding_id="mffind_v1_test",
+            recommended_disposition=RecommendedDisposition.REVIEW,
+            reason_codes=(),
+        )
+    except ValueError as exc:
+        assert "reason_codes" in str(exc)
+    else:
+        raise AssertionError("PolicyRecommendation accepted no reason codes")
+
+
 def test_policy_recommendation_rejects_non_current_policy_version() -> None:
     try:
         PolicyRecommendation(

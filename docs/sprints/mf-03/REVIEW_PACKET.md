@@ -127,3 +127,17 @@ Reviewer fix-pass:
 - `compileall`, `doctor --json`, `schema bundle`, `schema policy`,
   `policy --json`, `conformance demo --json`, and `git diff --check` all pass
   after the reviewer fix-pass.
+
+Native Codex fix-pass:
+
+- Native GitHub Codex returned P2 comments on exact head
+  `4fa0eac104f93f185cff3c5648140f6163350a20` for empty policy reason-code
+  arrays, evidence spans with empty quotes or impossible offsets, policy
+  metadata schema/runtime drift, and non-frozen policy order arrays.
+- The follow-up fix requires at least one policy reason code, rejects
+  zero-length evidence spans, caps evidence offsets to valid event text bounds,
+  mirrors metadata limits in the policy schema, and freezes the policy order
+  arrays with exact JSON Schema constants.
+- Python 3.12 tests now pass with `61` tests.
+- mypy still passes for Python `3.10`, `3.11`, and `3.12`.
+- `compileall` and `git diff --check` pass after the native-review fix-pass.

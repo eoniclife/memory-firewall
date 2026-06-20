@@ -438,12 +438,16 @@ class EvidenceSpan:
         end = _require_int(self.end, "end")
         if start < 0:
             raise ValueError("start must be non-negative")
-        if end < start:
-            raise ValueError("end must be greater than or equal to start")
+        if start >= MAX_TEXT_FIELD_CHARS:
+            raise ValueError(f"start must be less than {MAX_TEXT_FIELD_CHARS}")
+        if end > MAX_TEXT_FIELD_CHARS:
+            raise ValueError(f"end must be at most {MAX_TEXT_FIELD_CHARS}")
+        if end <= start:
+            raise ValueError("end must be greater than start")
         quote = _require_string(
             self.quote,
             "quote",
-            allow_empty=True,
+            allow_empty=False,
             max_chars=MAX_TEXT_FIELD_CHARS,
         )
         if len(quote) != end - start:
@@ -491,7 +495,7 @@ class EvidenceSpan:
             quote=_require_string(
                 value["quote"],
                 "quote",
-                allow_empty=True,
+                allow_empty=False,
                 max_chars=MAX_TEXT_FIELD_CHARS,
             ),
         )

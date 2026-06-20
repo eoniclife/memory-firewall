@@ -1,3 +1,5 @@
+from typing import Any
+
 from jsonschema import Draft202012Validator
 
 from memory_firewall import (
@@ -21,6 +23,25 @@ from memory_firewall import (
     risk_taxonomy,
 )
 from memory_firewall.schema import schema_bundle
+
+
+def _policy_contract_payload() -> dict[str, Any]:
+    return {
+        "policy_version": "mf-03",
+        "severity_order": ["informational", "suspicious", "high_impact"],
+        "disposition_order": ["pass", "warn", "review", "quarantine"],
+        "config_schema": {
+            "suspicious_review_confidence": 0.75,
+            "high_impact_quarantine_confidence": 0.9,
+            "metadata": {},
+        },
+        "recommendation_schema": {
+            "finding_id": "mffind_v1_test",
+            "recommended_disposition": "review",
+            "reason_codes": ["severity:suspicious"],
+            "policy_version": "mf-03",
+        },
+    }
 
 
 def test_event_schema_contains_required_contract_fields() -> None:
@@ -106,5 +127,69 @@ def test_adapter_schema_rejects_supported_and_unsupported_overlap() -> None:
     errors = list(
         Draft202012Validator(adapter_capability_report_schema()).iter_errors(payload)
     )
+
+    assert errors
+
+
+def test_policy_schema_accepts_canonical_policy_contract_payload() -> None:
+    Draft202012Validator(policy_schema()).validate(_policy_contract_payload())
+
+
+def test_evidence_span_schema_rejects_empty_or_out_of_bounds_spans() -> None:
+    validator = Draft202012Validator(evidence_span_schema())
+    empty_errors = list(
+        validator.iter_errors(
+            {
+                "source_field": "proposed_memory",
+                "start": 0,
+                "end": 0,
+                "quote": "",
+            }
+        )
+    )
+    out_of_bounds_errors = list(
+        validator.iter_errors(
+            {
+                "source_field": "proposed_memory",
+                "start": 16_384,
+                "end": 16_385,
+                "quote": "x",
+            }
+        )
+    )
+
+    assert empty_errors
+    assert out_of_bounds_errors
+
+
+def test_policy_schema_rejects_empty_reason_codes() -> None:
+    payload = _policy_contract_payload()
+    payload["recommendation_schema"] = {
+        **payload["recommendation_schema"],
+        "reason_codes": [],
+    }
+
+    errors = list(Draft202012Validator(policy_schema()).iter_errors(payload))
+
+    assert errors
+
+
+def test_policy_schema_freezes_order_arrays() -> None:
+    payload = _policy_contract_payload()
+    payload["severity_order"] = ["suspicious", "informational", "high_impact"]
+
+    errors = list(Draft202012Validator(policy_schema()).iter_errors(payload))
+
+    assert errors
+
+
+def test_policy_schema_mirrors_metadata_limits() -> None:
+    payload = _policy_contract_payload()
+    payload["config_schema"] = {
+        **payload["config_schema"],
+        "metadata": {f"k{i}": "v" for i in range(65)},
+    }
+
+    errors = list(Draft202012Validator(policy_schema()).iter_errors(payload))
 
     assert errors

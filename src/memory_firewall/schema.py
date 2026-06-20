@@ -8,6 +8,10 @@ from .adapters import AdapterCapability
 from .claim_budget import claim_budget
 from .models import (
     EvidenceField,
+    MAX_METADATA_ENTRIES,
+    MAX_METADATA_KEY_CHARS,
+    MAX_METADATA_STRING_CHARS,
+    MAX_TEXT_FIELD_CHARS,
     MemoryOperation,
     RecommendedDisposition,
     RiskCategory,
@@ -23,6 +27,18 @@ SCHEMA_VERSION = "mf-03"
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
     return [item.value for item in enum_type]
+
+
+def _metadata_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "maxProperties": MAX_METADATA_ENTRIES,
+        "propertyNames": {"type": "string", "maxLength": MAX_METADATA_KEY_CHARS},
+        "additionalProperties": {
+            "type": ["string", "number", "integer", "boolean", "null"],
+            "maxLength": MAX_METADATA_STRING_CHARS,
+        },
+    }
 
 
 def _capability_disjointness_constraints() -> list[dict[str, Any]]:
@@ -85,23 +101,18 @@ def event_schema() -> dict[str, Any]:
                 "type": "string",
                 "enum": _enum_values(SourceAuthority),
             },
-            "raw_or_redacted_content": {"type": "string", "maxLength": 16384},
-            "proposed_memory": {"type": "string", "maxLength": 16384},
+            "raw_or_redacted_content": {
+                "type": "string",
+                "maxLength": MAX_TEXT_FIELD_CHARS,
+            },
+            "proposed_memory": {"type": "string", "maxLength": MAX_TEXT_FIELD_CHARS},
             "operation": {"type": "string", "enum": _enum_values(MemoryOperation)},
             "target_namespace": {
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 16384,
             },
-            "metadata": {
-                "type": "object",
-                "maxProperties": 64,
-                "propertyNames": {"type": "string", "maxLength": 128},
-                "additionalProperties": {
-                    "type": ["string", "number", "integer", "boolean", "null"],
-                    "maxLength": 4096,
-                },
-            },
+            "metadata": _metadata_schema(),
         },
     }
 
@@ -118,9 +129,21 @@ def evidence_span_schema() -> dict[str, Any]:
         "required": ["source_field", "start", "end", "quote"],
         "properties": {
             "source_field": {"type": "string", "enum": _enum_values(EvidenceField)},
-            "start": {"type": "integer", "minimum": 0},
-            "end": {"type": "integer", "minimum": 0},
-            "quote": {"type": "string", "maxLength": 16384},
+            "start": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": MAX_TEXT_FIELD_CHARS - 1,
+            },
+            "end": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAX_TEXT_FIELD_CHARS,
+            },
+            "quote": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_TEXT_FIELD_CHARS,
+            },
         },
     }
 
@@ -198,15 +221,7 @@ def adapter_capability_report_schema() -> dict[str, Any]:
                 "uniqueItems": True,
             },
             "notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
-            "metadata": {
-                "type": "object",
-                "maxProperties": 64,
-                "propertyNames": {"type": "string", "maxLength": 128},
-                "additionalProperties": {
-                    "type": ["string", "number", "integer", "boolean", "null"],
-                    "maxLength": 4096,
-                },
-            },
+            "metadata": _metadata_schema(),
         },
     }
 
@@ -230,15 +245,19 @@ def policy_schema() -> dict[str, Any]:
         "properties": {
             "policy_version": {"const": "mf-03"},
             "severity_order": {
-                "type": "array",
-                "items": {"type": "string", "enum": _enum_values(RiskSeverity)},
+                "const": [
+                    RiskSeverity.INFORMATIONAL.value,
+                    RiskSeverity.SUSPICIOUS.value,
+                    RiskSeverity.HIGH_IMPACT.value,
+                ],
             },
             "disposition_order": {
-                "type": "array",
-                "items": {
-                    "type": "string",
-                    "enum": _enum_values(RecommendedDisposition),
-                },
+                "const": [
+                    RecommendedDisposition.PASS.value,
+                    RecommendedDisposition.WARN.value,
+                    RecommendedDisposition.REVIEW.value,
+                    RecommendedDisposition.QUARANTINE.value,
+                ],
             },
             "config_schema": {
                 "type": "object",
@@ -259,12 +278,7 @@ def policy_schema() -> dict[str, Any]:
                         "minimum": 0,
                         "maximum": 1,
                     },
-                    "metadata": {
-                        "type": "object",
-                        "additionalProperties": {
-                            "type": ["string", "number", "integer", "boolean", "null"]
-                        },
-                    },
+                    "metadata": _metadata_schema(),
                 },
             },
             "recommendation_schema": {
@@ -284,6 +298,7 @@ def policy_schema() -> dict[str, Any]:
                     },
                     "reason_codes": {
                         "type": "array",
+                        "minItems": 1,
                         "items": {"type": "string", "minLength": 1},
                     },
                     "policy_version": {"const": "mf-03"},
