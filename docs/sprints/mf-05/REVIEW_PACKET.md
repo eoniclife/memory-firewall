@@ -267,3 +267,59 @@ Second fix-pass focused gates:
     --json` passed
   - installed-wheel analysis output was checked for password-with-punctuation
     absence
+
+## Independent Exact-Head Re-Review And Third Fix Pass
+
+Independent reviewer `Huygens`
+(`019ee64d-d3da-77e2-a2cd-78e34f3c83ed`) requested changes on exact head
+`5c3665d84151feb167cff88dee4a1576e93b8021`.
+
+Blocking finding:
+
+- Redacted password values no longer appeared literally, but the analysis still
+  exported a raw SHA-256 digest of the hidden redacted object through
+  `object_hash_sha256` and AMC `span_hash_sha256`. For low-entropy secrets,
+  that digest could act as an offline verifier.
+
+Third fix-pass changes:
+
+- For redacted assertions, hash the exported redacted `object_value` rather than
+  hidden raw object material.
+- Require imported assertions to have `object_hash_sha256` matching the exported
+  `object_value`, redacted or not.
+- Added/strengthened regressions proving password literals and raw password
+  SHA-256 digests are absent from serialized analysis output.
+
+Third fix-pass gates:
+
+- focused MF-05/detector/schema/CLI tests:
+  `uv run pytest tests/test_analysis.py tests/test_detectors.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
+  - `61` passed
+- Huygens repro class:
+  - `secret_literal_present=False`
+  - `raw_secret_sha256_present=False`
+- full test suite:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev pytest -q`
+  - `109` passed
+- type checks:
+  - Python `3.10`, `3.11`, and `3.12` mypy all reported
+    `Success: no issues found in 22 source files`
+- bytecode smoke:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev python -m compileall -q src tests`
+- CLI/schema JSON smokes:
+  - `doctor`, `schema bundle`, `schema state-assertion`,
+    `schema state-analysis`, and `analyze`
+  - password-with-punctuation fixture was absent from serialized analysis
+    output as both literal text and raw SHA-256 digest
+- whitespace check:
+  `git diff --check`
+- package build and metadata:
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-full uv build --out-dir /tmp/memory-firewall-mf05-dist`
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev twine check /tmp/memory-firewall-mf05-dist/*`
+- installed-wheel smoke:
+  - installed `memory_firewall-0.1.0.dev5-py3-none-any.whl`
+  - `uv pip check` passed
+  - installed `doctor`, `schema state-analysis`, and `analyze --event <fixture>
+    --json` passed
+  - installed-wheel analysis output was checked for password-with-punctuation
+    literal and raw SHA-256 digest absence

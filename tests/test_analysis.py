@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 from jsonschema import Draft202012Validator
@@ -142,6 +143,7 @@ def test_sensitive_event_does_not_republish_secret_in_analysis_output() -> None:
 
     assert result.assertion.object_redacted is True
     assert secret not in serialized
+    assert hashlib.sha256(secret.encode()).hexdigest() not in serialized
     assert result.amc_mapping.evidence_span["text_excerpt"] is None
     assert result.amc_mapping.candidate_claim["claim_text"].startswith("[redacted")
 
@@ -161,6 +163,7 @@ def test_metadata_state_object_secret_is_redacted_even_when_detectors_are_quiet(
     assert result.finding_ids == ()
     assert result.assertion.object_redacted is True
     assert secret not in serialized
+    assert hashlib.sha256(secret.encode()).hexdigest() not in serialized
     assert result.amc_mapping.evidence_span["text_excerpt"] is None
     assert result.amc_mapping.candidate_claim["claim_text"].startswith("[redacted")
 
@@ -193,6 +196,7 @@ def test_metadata_secret_predicate_redacts_opaque_state_object() -> None:
     assert result.finding_ids == ()
     assert result.assertion.object_redacted is True
     assert secret not in serialized
+    assert hashlib.sha256(secret.encode()).hexdigest() not in serialized
 
 
 def test_password_with_punctuation_is_redacted_from_analysis_output() -> None:
@@ -209,6 +213,16 @@ def test_password_with_punctuation_is_redacted_from_analysis_output() -> None:
 
     assert result.assertion.object_redacted is True
     assert secret not in serialized
+    raw_secret_digest = hashlib.sha256(
+        f"database password is {secret}".encode()
+    ).hexdigest()
+    assert raw_secret_digest not in serialized
+    assert result.assertion.object_hash_sha256 == hashlib.sha256(
+        result.assertion.object_value.encode()
+    ).hexdigest()
+    assert result.amc_mapping.evidence_span["span_hash_sha256"] == (
+        result.assertion.object_hash_sha256
+    )
     assert result.amc_mapping.evidence_span["text_excerpt"] is None
 
 
@@ -338,6 +352,12 @@ def test_state_assertion_rejects_schema_invalid_imported_shapes() -> None:
         {**payload, "asserted_at": "not-a-timestamp"},
         {**payload, "supersedes": ["mfassert_v1_deadbeef", "mfassert_v1_deadbeef"]},
         {**payload, "object_hash_sha256": "0" * 64},
+        {
+            **payload,
+            "object_redacted": True,
+            "object_value": "[redacted]",
+            "object_hash_sha256": "0" * 64,
+        },
     )
     for invalid_payload in invalid_payloads:
         try:

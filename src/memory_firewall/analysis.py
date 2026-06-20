@@ -423,12 +423,8 @@ class MemoryStateAssertion:
             self, "supersedes", _unique_string_tuple(self.supersedes, "supersedes")
         )
         _require_timestamp(self.asserted_at, "asserted_at")
-        if not self.object_redacted and self.object_hash_sha256 != _sha256_text(
-            self.object_value
-        ):
-            raise ValueError(
-                "object_hash_sha256 must match object_value when object_redacted is false"
-            )
+        if self.object_hash_sha256 != _sha256_text(self.object_value):
+            raise ValueError("object_hash_sha256 must match exported object_value")
         metadata = {} if self.metadata is None else self.metadata
         object.__setattr__(self, "metadata", _freeze_metadata(metadata))
         if self.assertion_id != _PENDING_ASSERTION_ID:
@@ -547,7 +543,7 @@ class MemoryStateAssertion:
             subject=subject,
             predicate=predicate,
             object_value=object_value,
-            object_hash_sha256=_sha256_text(raw_object),
+            object_hash_sha256=_sha256_text(object_value),
             object_redacted=object_redacted,
             source_event_id=event.event_id,
             source_authority=event.source_authority,
