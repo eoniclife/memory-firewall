@@ -17,7 +17,7 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["package"] == "memory-firewall"
-    assert payload["schema_version"] == "mf-07"
+    assert payload["schema_version"] == "mf-08"
 
 
 def test_adapter_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
@@ -88,6 +88,26 @@ def test_trusted_read_preview_schema_command_prints_json(capsys) -> None:  # typ
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["title"] == "TrustedReadPreview"
+
+
+def test_demo_result_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "demo-result"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "PoisonDemoResult"
+
+
+def test_demo_poison_json_command(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["demo", "poison", "--json"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["demo_version"] == "mf-08"
+    assert payload["outcome"]["naive_answer"] == "Mirage"
+    assert payload["outcome"]["source_of_record_answer"] == "Helio"
+    assert payload["outcome"]["firewall_high_risk_events"] == 1
+    assert payload["outcome"]["pending_preview_items"] == 0
+    assert payload["outcome"]["rejected_preview_items"] == 0
+    assert payload["outcome"]["override_preview_items"] == 1
 
 
 def test_risks_json_command(capsys) -> None:  # type: ignore[no-untyped-def]

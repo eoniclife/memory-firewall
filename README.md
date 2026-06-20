@@ -14,8 +14,9 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository is in MF-07: local review queue, override receipts, and
-trusted-read preview over normalized scan results.
+This repository is in MF-08: a deterministic local poisoning demo over the
+existing scan, review queue, override receipt, and trusted-read preview
+surfaces.
 
 Implemented now:
 
@@ -33,12 +34,14 @@ Implemented now:
 - local review queue for high-risk scan events;
 - deterministic allow/reject override receipts with required reasons;
 - local trusted-read preview over allowed review items;
+- deterministic local poisoning demo over a toy last-write-wins memory store;
 - adapter capability report model and schema;
 - a built-in fake adapter conformance probe;
-- machine-readable event/finding/detector/state-analysis/scan/review schemas;
+- machine-readable event/finding/detector/state-analysis/scan/review/demo
+  schemas;
 - risk taxonomy and claim budget;
 - CLI commands for `doctor`, `schema`, `risks`, `claims`, `policy`, `detect`,
-  `analyze`, `scan`, `watch`, `review`, and `conformance`;
+  `analyze`, `scan`, `watch`, `review`, `demo`, and `conformance`;
 - CI, package metadata, and review packet.
 
 Not implemented yet:
@@ -65,6 +68,7 @@ uv run --python 3.12 --extra dev memory-firewall schema scan-result
 uv run --python 3.12 --extra dev memory-firewall schema review-queue
 uv run --python 3.12 --extra dev memory-firewall schema override-receipt
 uv run --python 3.12 --extra dev memory-firewall schema trusted-read-preview
+uv run --python 3.12 --extra dev memory-firewall schema demo-result
 uv run --python 3.12 --extra dev memory-firewall risks
 uv run --python 3.12 --extra dev memory-firewall claims
 uv run --python 3.12 --extra dev memory-firewall policy --json
@@ -77,6 +81,7 @@ uv run --python 3.12 --extra dev memory-firewall review list --queue review-queu
 uv run --python 3.12 --extra dev memory-firewall review allow --queue review-queue.json --item-id ITEM_ID --reason "verified locally" --json
 uv run --python 3.12 --extra dev memory-firewall review reject --queue review-queue.json --item-id ITEM_ID --reason "does not match source of record" --json
 uv run --python 3.12 --extra dev memory-firewall review trusted-read-preview --queue review-queue.json --json
+uv run --python 3.12 --extra dev memory-firewall demo poison --json
 uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 ```
 
@@ -87,7 +92,7 @@ objective truth, secure an entire agent, stop every poisoning attack, or
 automatically approve important memories.
 
 The broader public launch target is an installable local artifact for inspecting
-and explaining integrity risks in persistent agent memory. MF-07 still does not
+and explaining integrity risks in persistent agent memory. MF-08 still does not
 connect to real stores. It can run deterministic heuristic detectors and
 state-analysis over caller-supplied normalized `MemoryEvent` JSON or JSONL
 streams, carry scan-local assertion context to surface contradictions, and emit
@@ -104,6 +109,14 @@ trusted-read preview shows only allowed, receipted assertions from the local
 queue. It is still a preview surface: it does not write trusted ledger state,
 call a reducer, suppress native memory writes, or enforce adapter behavior.
 Rejected items are excluded from preview items.
+
+MF-08 adds `memory-firewall demo poison --json`. The demo shows a toy
+last-write-wins store accepting a forged durable memory after a trusted signed
+record. It then runs the same events through Memory Firewall so the forged
+write becomes a high-risk review item; pending and rejected items stay out of
+trusted-read preview, while an explicit override path appears only with a local
+receipt. This is a runnable demo, not a benchmark, real adapter, or production
+enforcement claim.
 
 ## Relationship To Agent Memory Contracts
 

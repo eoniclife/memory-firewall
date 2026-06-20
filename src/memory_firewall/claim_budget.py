@@ -36,6 +36,7 @@ _CLAIM_BUDGET = ClaimBudget(
         "Maintains a local review queue for high-risk scan events.",
         "Emits deterministic allow/reject override receipts for local review decisions.",
         "Shows a local trusted-read preview over allowed review items without writing trusted state.",
+        "Runs a deterministic local poisoning demo over a toy last-write-wins memory store.",
         "Provides machine-readable schemas and a CLI for inspecting the contract.",
         "Depends on compatible agent-memory-contracts 1.3.x as the public trust-kernel layer.",
     ),
@@ -49,6 +50,7 @@ _CLAIM_BUDGET = ClaimBudget(
         "Does not enforce quarantine, suppression, or adapter write blocking yet.",
         "Does not write trusted ledger entries or state snapshots.",
         "Does not claim framework adapter support yet.",
+        "The poisoning demo is not a benchmark and does not represent a real memory framework.",
     ),
     current_scope=(
         "Package shell.",
@@ -68,6 +70,7 @@ _CLAIM_BUDGET = ClaimBudget(
         "Local review queue.",
         "Local allow/reject override receipts.",
         "Trusted-read preview over allowed review items.",
+        "Deterministic local poisoning demo.",
         "Adapter capability report.",
         "Built-in fake adapter conformance probe.",
         "Risk taxonomy.",
