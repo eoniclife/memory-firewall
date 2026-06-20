@@ -18,9 +18,12 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .models import (
+    EVENT_ID_PREFIX,
     JSONScalar,
     MemoryEvent,
     MemoryOperation,
+    RecommendedDisposition,
+    RiskCategory,
     SourceAuthority,
     SourceType,
 )
@@ -51,6 +54,31 @@ _MEMORY_TEXT_KEYS = (
     "description",
     "entry",
 )
+_SAFE_TOKEN_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "0123456789"
+    "._-"
+)
+_SAFE_MEMORY_TARGETS = frozenset(
+    (
+        "default",
+        "global",
+        "memory",
+        "memories",
+        "profile",
+        "project",
+        "semantic",
+        "session",
+        "system",
+        "user",
+    )
+)
+_MEMORY_OPERATIONS = frozenset(item.value for item in MemoryOperation)
+_SOURCE_AUTHORITIES = frozenset(item.value for item in SourceAuthority)
+_SCAN_LEVELS = frozenset(item.value for item in ScanEventLevel)
+_RECOMMENDED_DISPOSITIONS = frozenset(item.value for item in RecommendedDisposition)
+_RISK_CATEGORIES = frozenset(item.value for item in RiskCategory)
 
 
 def _utc_timestamp() -> str:
@@ -840,12 +868,30 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
         return []
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
+        for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
-            payload = json.loads(line)
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                rows.append(
+                    _diagnostic_observation_row(
+                        path=path,
+                        line_number=line_number,
+                        reason="invalid-json",
+                    )
+                )
+                continue
             if isinstance(payload, dict):
                 rows.append(payload)
+            else:
+                rows.append(
+                    _diagnostic_observation_row(
+                        path=path,
+                        line_number=line_number,
+                        reason="non-object-json",
+                    )
+                )
     return rows
 
 
@@ -918,6 +964,92 @@ def _string_from_mapping(
     return default
 
 
+def _safe_token(value: Any, *, default: str, max_chars: int = 96) -> str:
+    if not isinstance(value, str) or not value:
+        return default
+    if len(value) > max_chars:
+        return default
+    if all(char in _SAFE_TOKEN_CHARS for char in value):
+        return value
+    return default
+
+
+def _enum_value(value: Any, *, allowed: frozenset[str], default: str) -> str:
+    if isinstance(value, str) and value in allowed:
+        return value
+    return default
+
+
+def _summary_mode(value: Any) -> str:
+    if value == HERMES_DEFAULT_MODE:
+        return HERMES_DEFAULT_MODE
+    return HERMES_DEFAULT_MODE
+
+
+def _redacted_event_id(value: Any) -> str:
+    if isinstance(value, str) and value.startswith(EVENT_ID_PREFIX):
+        return _safe_token(value, default="redacted-event-id")
+    if value is None or value == "":
+        return "unavailable-event"
+    return "redacted-event-id"
+
+
+def _redacted_target_namespace(value: Any) -> str:
+    if not isinstance(value, str) or not value:
+        return "redacted-target"
+    parts = value.split(":")
+    if parts[:2] == ["hermes", "memory"]:
+        target = parts[2] if len(parts) > 2 else "memory"
+        safe_target = target if target in _SAFE_MEMORY_TARGETS else "redacted"
+        return f"hermes:memory:{safe_target}"
+    if parts[:2] == ["hermes", "provider-tool"]:
+        tool = _safe_token(parts[2] if len(parts) > 2 else "", default="unknown-tool")
+        if len(parts) > 3:
+            return f"hermes:provider-tool:{tool}:redacted"
+        return f"hermes:provider-tool:{tool}"
+    if value == "hermes:implicit-turn":
+        return value
+    if value == "hermes:diagnostics:observations":
+        return value
+    return "redacted-target"
+
+
+def _diagnostic_observation_row(
+    *,
+    path: Path,
+    line_number: int,
+    reason: str,
+) -> dict[str, Any]:
+    safe_reason = _safe_token(reason, default="malformed-row")
+    return {
+        "recorded_at": f"diagnostic-line-{line_number}",
+        "hook_name": "diagnostic",
+        "tool_name": _safe_token(path.name, default="diagnostics"),
+        "mode": HERMES_DEFAULT_MODE,
+        "blocked_by_firewall": False,
+        "event": {
+            "event_id": "unavailable-event",
+            "operation": MemoryOperation.UPSERT.value,
+            "source_authority": SourceAuthority.UNTRUSTED.value,
+            "target_namespace": "hermes:diagnostics:observations",
+        },
+        "scan": {
+            "level": ScanEventLevel.WARN.value,
+            "highest_disposition": RecommendedDisposition.REVIEW.value,
+            "finding_count": 0,
+            "contradiction_count": 0,
+            "detector_result": {
+                "findings": [
+                    {
+                        "risk_category": RiskCategory.PROVENANCE_GAP.value,
+                        "detector_name": f"diagnostic-{safe_reason}",
+                    }
+                ],
+            },
+        },
+    }
+
+
 def _non_negative_int_from_mapping(value: Mapping[str, Any], key: str) -> int | None:
     raw = value.get(key)
     if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
@@ -934,8 +1066,15 @@ def _tuple_field_from_findings(
         if not isinstance(item, Mapping):
             continue
         raw = item.get(key)
-        if isinstance(raw, str) and raw:
-            values.add(raw)
+        if not isinstance(raw, str) or not raw:
+            continue
+        if key == "risk_category":
+            if raw in _RISK_CATEGORIES:
+                values.add(raw)
+        elif key == "detector_name":
+            values.add(_safe_token(raw, default="redacted-detector"))
+        else:
+            values.add(_safe_token(raw, default="redacted-value"))
     return tuple(sorted(values))
 
 
@@ -970,31 +1109,33 @@ def _hermes_observation_summary_from_row(
             "recorded_at",
             default="unknown-recorded-at",
         ),
-        hook_name=_string_from_mapping(row, "hook_name", default="unknown-hook"),
-        tool_name=_string_from_mapping(row, "tool_name", default="unknown-tool"),
-        mode=_string_from_mapping(row, "mode", default=HERMES_DEFAULT_MODE),
+        hook_name=_safe_token(row.get("hook_name"), default="unknown-hook"),
+        tool_name=_safe_token(row.get("tool_name"), default="unknown-tool"),
+        mode=_summary_mode(row.get("mode")),
         blocked_by_firewall=blocked if isinstance(blocked, bool) else False,
-        event_id=_string_from_mapping(event_payload, "event_id", default="unknown-event"),
-        operation=_string_from_mapping(
-            event_payload,
-            "operation",
-            default="unknown-operation",
+        event_id=_redacted_event_id(event_payload.get("event_id")),
+        operation=_enum_value(
+            event_payload.get("operation"),
+            allowed=_MEMORY_OPERATIONS,
+            default=MemoryOperation.UPSERT.value,
         ),
-        source_authority=_string_from_mapping(
-            event_payload,
-            "source_authority",
-            default="unknown-authority",
+        source_authority=_enum_value(
+            event_payload.get("source_authority"),
+            allowed=_SOURCE_AUTHORITIES,
+            default=SourceAuthority.UNTRUSTED.value,
         ),
-        target_namespace=_string_from_mapping(
-            event_payload,
-            "target_namespace",
-            default="unknown-target",
+        target_namespace=_redacted_target_namespace(
+            event_payload.get("target_namespace")
         ),
-        level=_string_from_mapping(scan_payload, "level", default="unknown-level"),
-        highest_disposition=_string_from_mapping(
-            scan_payload,
-            "highest_disposition",
-            default="unknown-disposition",
+        level=_enum_value(
+            scan_payload.get("level"),
+            allowed=_SCAN_LEVELS,
+            default=ScanEventLevel.WARN.value,
+        ),
+        highest_disposition=_enum_value(
+            scan_payload.get("highest_disposition"),
+            allowed=_RECOMMENDED_DISPOSITIONS,
+            default=RecommendedDisposition.REVIEW.value,
         ),
         finding_count=finding_count,
         contradiction_count=contradiction_count,

@@ -130,9 +130,9 @@ Set
 observations for implicit memory-provider writes.
 
 `memory-firewall hermes observations` shows newest-first redacted summaries over
-the local Hermes diagnostics: recorded time, hook/tool, target namespace,
-event ID, level, disposition, finding count, contradiction count, and risk
-categories. It does not print raw candidate memory text.
+the local Hermes diagnostics: recorded time, hook/tool, redacted target
+namespace, event ID, level, disposition, finding count, contradiction count,
+and risk categories. It does not print raw candidate memory text.
 
 ## Product Boundary
 

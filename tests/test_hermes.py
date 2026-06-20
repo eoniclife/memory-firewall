@@ -3,6 +3,7 @@ import os
 import stat
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from memory_firewall import (
     HERMES_PLUGIN_INIT_FILENAME,
@@ -12,6 +13,7 @@ from memory_firewall import (
     MemoryEvent,
     ScanEventLevel,
     default_hermes_plugin_dir,
+    hermes_observations_schema,
     install_hermes_plugin_shim,
     memory_event_from_hermes_turn,
     memory_events_from_hermes_tool_call,
@@ -171,6 +173,102 @@ def test_hermes_recent_observations_are_newest_first_and_redacted(tmp_path) -> N
     assert payload["raw_content_included"] is False
     assert "raw_or_redacted_content" not in json.dumps(payload)
     assert "Ignore previous system instructions" not in json.dumps(payload)
+
+
+def test_hermes_recent_observations_redacts_user_controlled_namespace(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    secret_text = "User approval token is sk-test-secret"
+    memory_events = memory_events_from_hermes_tool_call(
+        "memory",
+        {
+            "action": "add",
+            "target": secret_text,
+            "content": secret_text,
+        },
+        timestamp="2026-06-20T15:00:00Z",
+        session_id="session-1",
+        tool_call_id="tool-1",
+        turn_id="turn-1",
+    )
+    provider_events = memory_events_from_hermes_tool_call(
+        "mem0_remember",
+        {
+            "target": secret_text,
+            "content": secret_text,
+        },
+        timestamp="2026-06-20T15:01:00Z",
+        session_id="session-1",
+        tool_call_id="tool-2",
+        turn_id="turn-2",
+    )
+    assert memory_events[0].target_namespace == f"hermes:memory:{secret_text}"
+    assert provider_events[0].target_namespace.endswith(secret_text)
+
+    record_hermes_events(
+        memory_events,
+        hook_name="post_tool_call",
+        tool_name="memory",
+        state_dir=tmp_path,
+    )
+    record_hermes_events(
+        provider_events,
+        hook_name="post_tool_call",
+        tool_name="mem0_remember",
+        state_dir=tmp_path,
+    )
+
+    payload = recent_hermes_observations(state_dir=tmp_path, limit=5).to_dict()
+    rendered = json.dumps(payload)
+    namespaces = [item["target_namespace"] for item in payload["observations"]]
+
+    assert "sk-test-secret" not in rendered
+    assert secret_text not in rendered
+    assert "hermes:memory:redacted" in namespaces
+    assert "hermes:provider-tool:mem0_remember:redacted" in namespaces
+
+
+def test_hermes_recent_observations_handles_malformed_rows_schema_safely(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    observations_path = tmp_path / "observations.jsonl"
+    observations_path.write_text(
+        "\n".join(
+            [
+                '{"recorded_at":"2026-06-20T15:00:00Z"}',
+                "{not json",
+                json.dumps(
+                    {
+                        "recorded_at": "2026-06-20T15:01:00Z",
+                        "hook_name": "post_tool_call",
+                        "tool_name": "memory",
+                        "mode": "enforce",
+                        "event": {
+                            "event_id": "raw-user-secret",
+                            "operation": "bad-operation",
+                            "source_authority": "bad-authority",
+                            "target_namespace": "User approval token is sk-test-secret",
+                        },
+                        "scan": {
+                            "level": "bad-level",
+                            "highest_disposition": "bad-disposition",
+                        },
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = recent_hermes_observations(state_dir=tmp_path, limit=10).to_dict()
+
+    Draft202012Validator(hermes_observations_schema()).validate(payload)
+    rendered = json.dumps(payload)
+    assert payload["returned_observations"] == 3
+    assert "raw-user-secret" not in rendered
+    assert "sk-test-secret" not in rendered
+    assert all(item["mode"] == "observe" for item in payload["observations"])
+    assert {item["level"] for item in payload["observations"]} == {"warn"}
+    assert {item["highest_disposition"] for item in payload["observations"]} == {
+        "review"
+    }
 
 
 def test_hermes_observation_files_are_private(tmp_path) -> None:  # type: ignore[no-untyped-def]

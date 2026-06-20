@@ -42,7 +42,7 @@ It emits redacted rows with:
 - recorded time;
 - hook name;
 - tool name;
-- target namespace;
+- redacted target namespace;
 - event ID;
 - operation;
 - source authority;
@@ -110,7 +110,8 @@ new observations command without printing raw candidate memory text.
 
 - focused MF-13/Hermes/schema tests:
   `uv run --python 3.12 --extra dev pytest tests/test_hermes.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
-  - `59` passed.
+  - initial: `59` passed;
+  - fix-pass after exact-head review: `61` passed.
 - focused type checks:
   `uv run --python 3.12 --extra dev mypy src/memory_firewall/hermes.py src/memory_firewall/cli.py src/memory_firewall/schema.py src/memory_firewall/__init__.py tests/test_hermes.py tests/test_cli.py tests/test_schema_and_taxonomy.py`
   - `Success: no issues found in 7 source files`.
@@ -147,6 +148,37 @@ new observations command without printing raw candidate memory text.
   - installed distribution metadata exposed and loaded the
     `hermes_agent.plugins` entry point;
   - `uv pip check` passed.
+
+## Review Fix-Pass
+
+Independent exact-head reviewer `Ptolemy` requested changes on
+`f373cdca2ca80ecfe6e55901ad8811af741052c5`:
+
+- P1: redacted observations could leak raw candidate text through
+  user-controlled `target_namespace` segments;
+- P2: malformed or incomplete stored rows could produce CLI JSON that failed
+  the exported schema, or crash on invalid JSON/non-`observe` mode values.
+
+Fix-pass changes:
+
+- redacts user-controlled memory and provider target namespace segments in
+  `HermesObservationSummary`;
+- preserves known safe namespace shape such as `hermes:memory:memory` and
+  `hermes:provider-tool:<tool>`;
+- normalizes malformed rows into schema-valid `warn` / `review` diagnostic
+  summaries;
+- skips invalid JSON crashes by creating a redacted diagnostic summary row;
+- sanitizes tool, detector, and event-id-ish summary fields;
+- adds regressions for secret-bearing targets, invalid JSON, incomplete rows,
+  invalid enum values, and schema validation.
+
+Additional fix-pass probe:
+
+- a secret-bearing `target` on both the built-in `memory` tool and a
+  `mem0_remember` provider-like tool produced only
+  `hermes:memory:redacted` and `hermes:provider-tool:mem0_remember:redacted`
+  in the observations output;
+- grep confirmed the secret phrase did not appear in the observations CLI JSON.
 
 ## Dogfood Results
 

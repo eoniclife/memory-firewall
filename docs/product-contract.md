@@ -498,8 +498,8 @@ Hermes CLI discovery list and enable the installed package's observe-only hook
 module.
 
 The MF-13 observations readout is redacted. It shows recent observation
-metadata such as recorded time, hook/tool name, target namespace, event ID,
-level, disposition, finding count, contradiction count, risk categories, and
+metadata such as recorded time, hook/tool name, redacted target namespace, event
+ID, level, disposition, finding count, contradiction count, risk categories, and
 detector names. It does not print raw candidate memory text or turn transcripts,
 and it does not make the underlying local diagnostics safe to share wholesale.
 
