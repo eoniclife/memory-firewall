@@ -317,6 +317,10 @@ def policy_schema() -> dict[str, Any]:
 def detector_pack_schema() -> dict[str, Any]:
     """Return the MF-04 detector pack metadata schema."""
 
+    built_in_detector_definitions = [
+        {"const": definition.to_dict()}
+        for definition in default_detector_pack().definitions
+    ]
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://github.com/eoniclife/memory-firewall/schemas/detector-pack.mf-04.json",
@@ -330,31 +334,8 @@ def detector_pack_schema() -> dict[str, Any]:
             "definitions": {
                 "type": "array",
                 "minItems": 1,
-                "items": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": [
-                        "name",
-                        "version",
-                        "risk_category",
-                        "description",
-                        "limitations",
-                    ],
-                    "properties": {
-                        "name": {"type": "string", "minLength": 1},
-                        "version": {"const": DETECTOR_PACK_VERSION},
-                        "risk_category": {
-                            "type": "string",
-                            "enum": _enum_values(RiskCategory),
-                        },
-                        "description": {"type": "string", "minLength": 1},
-                        "limitations": {
-                            "type": "array",
-                            "minItems": 1,
-                            "items": {"type": "string", "minLength": 1},
-                        },
-                    },
-                },
+                "uniqueItems": True,
+                "items": {"oneOf": built_in_detector_definitions},
             },
         },
     }

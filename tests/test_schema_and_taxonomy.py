@@ -131,6 +131,21 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     )
 
 
+def test_detector_pack_schema_rejects_mislabeled_builtin_definition() -> None:
+    payload: dict[str, Any] = default_detector_pack().to_dict()
+    definitions = list(payload["definitions"])
+    first_definition = dict(definitions[0])
+    definitions[0] = {
+        **first_definition,
+        "risk_category": "contradiction",
+    }
+    payload["definitions"] = definitions
+
+    errors = list(Draft202012Validator(detector_pack_schema()).iter_errors(payload))
+
+    assert errors
+
+
 def test_adapter_schema_rejects_supported_and_unsupported_overlap() -> None:
     payload = demo_memory_adapter().capability_report.to_dict()
     payload["unsupported_capabilities"].append("emit_memory_events")
