@@ -143,6 +143,87 @@ def test_sensitive_event_does_not_republish_secret_in_analysis_output() -> None:
     assert result.amc_mapping.candidate_claim["claim_text"].startswith("[redacted")
 
 
+def test_metadata_state_object_secret_is_redacted_even_when_detectors_are_quiet() -> None:
+    secret = "sk-ABCDEFGHIJKLMNOPQRSTUV"
+    event = _event(
+        authority=SourceAuthority.TOOL_OBSERVED,
+        source_id="crm:quiet-secret",
+        state_object=secret,
+        content="CRM account tier is enterprise.",
+    )
+
+    result = analyze_memory_state(event)
+    serialized = json.dumps(result.to_dict(), sort_keys=True)
+
+    assert result.finding_ids == ()
+    assert result.assertion.object_redacted is True
+    assert secret not in serialized
+    assert result.amc_mapping.evidence_span["text_excerpt"] is None
+    assert result.amc_mapping.candidate_claim["claim_text"].startswith("[redacted")
+
+
+def test_metadata_secret_predicate_redacts_opaque_state_object() -> None:
+    secret = "abcd1234abcd5678"
+    event = MemoryEvent.from_adapter_payload(
+        {
+            "timestamp": "2026-06-20T15:00:00Z",
+            "actor": "agent:test",
+            "user_or_tenant_scope": "tenant:demo",
+            "source_type": SourceType.TOOL_OUTPUT.value,
+            "source_id": "vault:quiet-secret",
+            "source_authority": SourceAuthority.TOOL_OBSERVED.value,
+            "raw_or_redacted_content": "Vault lookup completed.",
+            "proposed_memory": "Vault lookup completed.",
+            "operation": MemoryOperation.UPSERT.value,
+            "target_namespace": "ops",
+            "metadata": {
+                "state_subject": "tenant:demo:ops",
+                "state_predicate": "api_key",
+                "state_object": secret,
+            },
+        }
+    )
+
+    result = analyze_memory_state(event)
+    serialized = json.dumps(result.to_dict(), sort_keys=True)
+
+    assert result.finding_ids == ()
+    assert result.assertion.object_redacted is True
+    assert secret not in serialized
+
+
+def test_actor_secret_is_not_republished_in_amc_source_record() -> None:
+    secret_actor = "sk-ACTORABCDEFGHIJKLMNOP"
+    event = MemoryEvent.from_adapter_payload(
+        {
+            "timestamp": "2026-06-20T15:00:00Z",
+            "actor": secret_actor,
+            "user_or_tenant_scope": "tenant:demo",
+            "source_type": SourceType.TOOL_OUTPUT.value,
+            "source_id": "crm:account:actor",
+            "source_authority": SourceAuthority.TOOL_OBSERVED.value,
+            "raw_or_redacted_content": "CRM account tier is enterprise.",
+            "proposed_memory": "CRM account tier is enterprise.",
+            "operation": MemoryOperation.UPSERT.value,
+            "target_namespace": "finance",
+            "metadata": {
+                "state_subject": "tenant:demo:finance:account",
+                "state_predicate": "account_tier",
+                "state_object": "enterprise",
+            },
+        }
+    )
+
+    result = analyze_memory_state(event)
+    serialized = json.dumps(result.to_dict(), sort_keys=True)
+    source_record = result.amc_mapping.source_record
+
+    assert secret_actor not in serialized
+    assert source_record["author_or_sender"] is None
+    assert source_record["participants"] == []
+    assert source_record["metadata"]["actor_redacted"] is True
+
+
 def test_analysis_result_is_deterministic_for_same_input() -> None:
     event = _event(
         authority=SourceAuthority.TOOL_OBSERVED,
@@ -174,3 +255,25 @@ def test_state_assertion_rejects_string_object_redacted_flag() -> None:
         assert "object_redacted" in str(exc)
     else:
         raise AssertionError("MemoryStateAssertion accepted string object_redacted")
+
+
+def test_state_assertion_rejects_unknown_fields_and_malformed_event_id() -> None:
+    event = _event(
+        authority=SourceAuthority.TOOL_OBSERVED,
+        source_id="crm:account:789",
+        state_object="Enterprise",
+        content="CRM account tier is Enterprise.",
+    )
+    assertion = MemoryStateAssertion.from_event(event, redact_object=False)
+    payload = assertion.to_dict()
+
+    for invalid_payload in (
+        {**payload, "unexpected": "field"},
+        {**payload, "source_event_id": "mfev_v1_not_hex"},
+    ):
+        try:
+            MemoryStateAssertion.from_dict(invalid_payload)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("MemoryStateAssertion accepted schema-invalid input")

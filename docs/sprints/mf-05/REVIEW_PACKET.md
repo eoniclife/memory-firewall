@@ -145,3 +145,62 @@ Passed locally:
   - installed console script smokes for `doctor`, `schema state-analysis`,
     `claims --json`, and `analyze --event <fixture> --json`
   - installed-wheel analysis output was checked for sample secret absence
+
+## Initial Review Findings And Fix Pass
+
+Independent reviewer `Gibbs`
+(`019ee623-64fd-74d0-9bac-17ae75b3f6e9`) requested changes on exact head
+`687b93646c872cfa2c3e2abbcdea42453a655c6a`.
+
+Blocking findings:
+
+- `metadata.state_object` could contain a secret-like value that detectors never
+  saw, causing `analyze --json` to republish it through the assertion object,
+  AMC `EvidenceSpan.text_excerpt`, and AMC `CandidateClaim` text.
+- `event.actor` could contain a secret-like value and be republished through
+  AMC `SourceRecord.author_or_sender` and `participants`.
+- `MemoryStateAssertion.from_dict()` accepted schema-invalid existing assertion
+  inputs: unknown fields and malformed `source_event_id` values.
+
+Fix-pass changes:
+
+- Added analysis-layer secret recognition/redaction for metadata-derived
+  subject, predicate, object, actor, and namespace output.
+- Redact the assertion object when detector findings require it, when the raw
+  object itself matches a recognized secret-like value, or when subject/predicate
+  carry secret-label hints such as `api_key`, `token`, or `password`.
+- Drop secret-like actors from AMC `author_or_sender` and `participants` rather
+  than echoing them.
+- Reject unknown `MemoryStateAssertion` fields and require
+  `source_event_id` to match the canonical `mfev_v1_[0-9a-f]{32}` shape.
+- Added regression coverage for metadata-only secret leakage, opaque
+  `api_key` predicate values, actor leakage, unknown assertion fields, and
+  malformed event ids.
+
+Fix-pass gates:
+
+- focused MF-05/schema/CLI tests:
+  `uv run pytest tests/test_analysis.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
+  - `38` passed
+- full test suite:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev pytest -q`
+  - `105` passed
+- type checks:
+  - Python `3.10`, `3.11`, and `3.12` mypy all reported
+    `Success: no issues found in 22 source files`
+- bytecode smoke:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev python -m compileall -q src tests`
+- CLI/schema JSON smokes:
+  - `doctor`, `schema bundle`, `schema state-assertion`,
+    `schema state-analysis`, `claims`, and `analyze`
+  - metadata-object and actor secret fixture was absent from analysis output
+- whitespace check:
+  `git diff --check`
+- package build and metadata:
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-full uv build --out-dir /tmp/memory-firewall-mf05-dist`
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev twine check /tmp/memory-firewall-mf05-dist/*`
+- installed-wheel smoke:
+  - installed `memory_firewall-0.1.0.dev5-py3-none-any.whl`
+  - `uv pip check` passed
+  - installed `analyze --event <fixture> --json` confirmed metadata-object and
+    actor secrets were absent from output

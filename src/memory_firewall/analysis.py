@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
@@ -38,6 +39,34 @@ ANALYSIS_VERSION = "mf-05"
 ASSERTION_ID_PREFIX = "mfassert_v1_"
 ANALYSIS_ID_PREFIX = "mfanalysis_v1_"
 _PENDING_ASSERTION_ID = "_pending_assertion_id"
+_STATE_ASSERTION_KEYS = frozenset(
+    {
+        "assertion_id",
+        "subject",
+        "predicate",
+        "object_value",
+        "object_hash_sha256",
+        "object_redacted",
+        "source_event_id",
+        "source_authority",
+        "asserted_at",
+        "status",
+        "supersedes",
+        "metadata",
+    }
+)
+_MEMORY_EVENT_ID_RE = re.compile(rf"^{EVENT_ID_PREFIX}[0-9a-f]{{32}}$")
+_SECRET_LABEL_PATTERN = re.compile(
+    r"\b(?P<label>api[_\-\s]?key|secret|password|passwd|token)\b"
+    r"\s*[:=]\s*(?P<secret>[A-Za-z0-9_\-]{8,})",
+    re.I,
+)
+_SECRET_LABEL_HINT_PATTERN = re.compile(
+    r"\b(api[_\-\s]?key|secret|password|passwd|token)\b",
+    re.I,
+)
+_OPENAI_KEY_PATTERN = re.compile(r"\bsk-[A-Za-z0-9_\-]{16,}\b")
+_CARD_LIKE_PATTERN = re.compile(r"\b(?:\d[ -]*?){13,19}\b")
 
 
 class StateAssertionStatus(str, Enum):
@@ -99,6 +128,15 @@ def _require_bool(value: Any, field_name: str) -> bool:
     return value
 
 
+def _reject_unknown_fields(
+    value: Mapping[str, Any], allowed: frozenset[str], label: str
+) -> None:
+    extra = sorted(set(value) - allowed)
+    if extra:
+        joined = ", ".join(extra)
+        raise ValueError(f"{label} contains unknown field(s): {joined}")
+
+
 def _coerce_status(value: StateAssertionStatus | str) -> StateAssertionStatus:
     if isinstance(value, StateAssertionStatus):
         return value
@@ -139,6 +177,47 @@ def _string_tuple(value: tuple[str, ...] | list[str], field_name: str) -> tuple[
     if any(not isinstance(item, str) or not item for item in coerced):
         raise ValueError(f"{field_name} must contain non-empty strings")
     return coerced
+
+
+def _secret_value_ranges(text: str) -> tuple[tuple[int, int], ...]:
+    ranges: list[tuple[int, int]] = []
+    for match in _SECRET_LABEL_PATTERN.finditer(text):
+        ranges.append(match.span("secret"))
+    for pattern in (_OPENAI_KEY_PATTERN, _CARD_LIKE_PATTERN):
+        for match in pattern.finditer(text):
+            ranges.append(match.span())
+    ranges.sort()
+    merged: list[tuple[int, int]] = []
+    for start, end in ranges:
+        if not merged or start > merged[-1][1]:
+            merged.append((start, end))
+            continue
+        previous_start, previous_end = merged[-1]
+        merged[-1] = (previous_start, max(previous_end, end))
+    return tuple(merged)
+
+
+def _contains_secret_like_text(value: str) -> bool:
+    return bool(_secret_value_ranges(value))
+
+
+def _contains_secret_label_hint(value: str) -> bool:
+    return _SECRET_LABEL_HINT_PATTERN.search(value) is not None
+
+
+def _redact_secret_like_text(value: str) -> str:
+    ranges = _secret_value_ranges(value)
+    if not ranges:
+        return value
+    chunks: list[str] = []
+    cursor = 0
+    for start, end in ranges:
+        chunks.append(value[cursor:start])
+        chunks.append("[redacted-secret]")
+        cursor = end
+    chunks.append(value[cursor:])
+    redacted = "".join(chunks).strip()
+    return redacted or "[redacted]"
 
 
 def compute_state_assertion_id(value: Mapping[str, Any]) -> str:
@@ -184,11 +263,15 @@ def _metadata_string(
 
 def _state_subject(event: MemoryEvent) -> str:
     default = f"{event.user_or_tenant_scope}:{event.target_namespace}"
-    return _metadata_string(event.metadata, "state_subject", default)
+    return _redact_secret_like_text(
+        _metadata_string(event.metadata, "state_subject", default)
+    )
 
 
 def _state_predicate(event: MemoryEvent) -> str:
-    return _metadata_string(event.metadata, "state_predicate", "proposed_memory")
+    return _redact_secret_like_text(
+        _metadata_string(event.metadata, "state_predicate", "proposed_memory")
+    )
 
 
 def _state_object(event: MemoryEvent) -> str:
@@ -198,6 +281,16 @@ def _state_object(event: MemoryEvent) -> str:
 
 def _redacted_object(event: MemoryEvent) -> str:
     return f"[redacted by memory-firewall; see event {event.event_id}]"
+
+
+def _safe_actor(event: MemoryEvent) -> str | None:
+    if _contains_secret_like_text(event.actor):
+        return None
+    return event.actor
+
+
+def _safe_metadata_value(value: str) -> str:
+    return _redact_secret_like_text(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,7 +396,7 @@ class MemoryStateAssertion:
             allow_empty=False,
             max_chars=96,
         )
-        if not self.source_event_id.startswith(EVENT_ID_PREFIX):
+        if _MEMORY_EVENT_ID_RE.fullmatch(self.source_event_id) is None:
             raise ValueError("source_event_id must be a MemoryEvent id")
         object.__setattr__(
             self, "source_authority", _coerce_authority(self.source_authority)
@@ -353,6 +446,7 @@ class MemoryStateAssertion:
     def from_dict(cls, value: Mapping[str, Any]) -> "MemoryStateAssertion":
         """Build an assertion from JSON-like data."""
 
+        _reject_unknown_fields(value, _STATE_ASSERTION_KEYS, "MemoryStateAssertion")
         metadata_value = value.get("metadata", {})
         if not isinstance(metadata_value, Mapping):
             raise TypeError("metadata must be a mapping")
@@ -415,20 +509,34 @@ class MemoryStateAssertion:
         """Create a deterministic local assertion from a MemoryEvent."""
 
         raw_object = _state_object(event)
-        object_value = _redacted_object(event) if redact_object else raw_object
+        subject = _state_subject(event)
+        predicate = _state_predicate(event)
+        object_redacted = (
+            redact_object
+            or _contains_secret_like_text(raw_object)
+            or _contains_secret_label_hint(subject)
+            or _contains_secret_label_hint(predicate)
+        )
+        object_value = (
+            _redacted_object(event)
+            if object_redacted
+            else _redact_secret_like_text(raw_object)
+        )
         pending = cls(
             assertion_id=_PENDING_ASSERTION_ID,
-            subject=_state_subject(event),
-            predicate=_state_predicate(event),
+            subject=subject,
+            predicate=predicate,
             object_value=object_value,
             object_hash_sha256=_sha256_text(raw_object),
-            object_redacted=redact_object,
+            object_redacted=object_redacted,
             source_event_id=event.event_id,
             source_authority=event.source_authority,
             asserted_at=event.timestamp,
             status=status,
             metadata={
-                "memory_firewall_target_namespace": event.target_namespace,
+                "memory_firewall_target_namespace": _safe_metadata_value(
+                    event.target_namespace
+                ),
                 "memory_firewall_operation": event.operation.value,
             },
         )
@@ -759,6 +867,7 @@ def _build_amc_mapping(
     event_hash = _hash_json(event_payload)
     raw_ref = {"kind": "content_hash_only", "value": event.event_id}
     source_id = make_source_id("other", raw_ref, event_hash)
+    safe_actor = _safe_actor(event)
     source_record: dict[str, Any] = {
         "id": source_id,
         "schema_version": "1.0.0",
@@ -769,14 +878,15 @@ def _build_amc_mapping(
         "content_hash_sha256": event_hash,
         "captured_at": event.timestamp,
         "observed_at": event.timestamp,
-        "author_or_sender": event.actor,
-        "participants": [event.actor],
+        "author_or_sender": safe_actor,
+        "participants": [] if safe_actor is None else [safe_actor],
         "privacy_class": privacy_class,
         "custody_status": "redacted" if redacted else "synthetic",
         "parser_version": ANALYSIS_VERSION,
         "metadata": {
             "memory_firewall_event_id": event.event_id,
-            "target_namespace": event.target_namespace,
+            "target_namespace": _safe_metadata_value(event.target_namespace),
+            "actor_redacted": safe_actor is None,
         },
     }
 
