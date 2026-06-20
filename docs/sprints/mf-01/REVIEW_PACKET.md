@@ -104,3 +104,10 @@ Fix-pass after independent reviewer/MiniMax requested claim-boundary changes:
 - rebuilt sdist/wheel passed `twine check`.
 - installed-wheel smoke passed with `pip check`, `doctor --json`, and schema
   bundle validation.
+
+Final polish after MiniMax accepted with nits:
+
+- Python 3.12 tests: `16` passed.
+- mypy passed for Python `3.10`, `3.11`, and `3.12`.
+- `compileall` passed for `src` and `tests`.
+- `git diff --check` passed.

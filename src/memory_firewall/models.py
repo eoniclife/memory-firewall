@@ -104,13 +104,15 @@ class RecommendedDisposition(str, Enum):
 
     PASS = "pass"
     WARN = "warn"
-    QUARANTINE = "quarantine"
     REVIEW = "review"
+    QUARANTINE = "quarantine"
 
 
 def _coerce_metadata(value: Mapping[str, JSONScalar] | None) -> dict[str, JSONScalar]:
     metadata = dict(value or {})
     for key, item in metadata.items():
+        if not isinstance(key, str):
+            raise TypeError("metadata keys must be strings")
         if item is not None and not isinstance(item, (str, int, float, bool)):
             raise TypeError(f"metadata[{key!r}] must be a JSON scalar")
     return metadata
@@ -231,7 +233,9 @@ class MemoryFinding:
         if isinstance(raw_limitations, str):
             raise TypeError("limitations must be a sequence of strings")
         else:
-            limitations = tuple(str(item) for item in raw_limitations)
+            limitations = tuple(raw_limitations)
+        if any(not isinstance(item, str) for item in limitations):
+            raise TypeError("limitations must contain only strings")
         _reject_unknown_fields(value, _FINDING_KEYS, "MemoryFinding")
         return cls(
             finding_id=str(value["finding_id"]),

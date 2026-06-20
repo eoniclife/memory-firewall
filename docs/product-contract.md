@@ -19,8 +19,9 @@ agent-memory-contracts
 memory-firewall
     Public contract and CLI shell for the future scanner/demo/reference guardrail
 
-governed-memory
-    Private product orchestration, production adapters, enterprise layer
+private orchestration layer
+    Production adapters, orchestration, and enterprise control plane, not in
+    this public repository
 ```
 
 ## MF-01 Allows
@@ -52,7 +53,7 @@ The MF-01 `operation` enum is contract vocabulary for adapter/event producers:
 - `import`
 
 These values describe the proposed memory operation. They do not mean MF-01 can
-execute, block, or enforce that operation.
+execute, block, import from a framework, or enforce that operation.
 
 ## Canonical Event Surface
 
