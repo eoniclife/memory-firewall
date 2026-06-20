@@ -12,10 +12,13 @@ from .adapters import demo_memory_adapter
 from .claim_budget import claim_budget
 from .conformance import run_adapter_conformance
 from .doctor import doctor_report
+from .policy import DISPOSITION_ORDER, SEVERITY_ORDER, PolicyConfig
 from .schema import (
     adapter_capability_report_schema,
+    evidence_span_schema,
     event_schema,
     finding_schema,
+    policy_schema,
     schema_bundle,
 )
 from .taxonomy import risk_taxonomy
@@ -42,7 +45,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     schema_parser.add_argument(
         "name",
-        choices=("event", "finding", "adapter", "bundle"),
+        choices=("event", "evidence-span", "finding", "adapter", "policy", "bundle"),
         help="Schema to print.",
     )
 
@@ -52,13 +55,18 @@ def _build_parser() -> argparse.ArgumentParser:
     claims_parser = subparsers.add_parser("claims", help="Print claim budget.")
     claims_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    policy_parser = subparsers.add_parser(
+        "policy", help="Print deterministic policy defaults."
+    )
+    policy_parser.add_argument("--json", action="store_true", dest="as_json")
+
     conformance_parser = subparsers.add_parser(
         "conformance", help="Run adapter conformance probes."
     )
     conformance_parser.add_argument(
         "adapter",
         choices=("demo",),
-        help="Adapter probe to run. MF-02 ships only the built-in demo adapter.",
+        help="Adapter probe to run. This package ships only the built-in demo adapter.",
     )
     conformance_parser.add_argument("--json", action="store_true", dest="as_json")
 
@@ -80,10 +88,14 @@ def _run_doctor(as_json: bool, stdout: TextIO) -> int:
 def _run_schema(name: str, stdout: TextIO) -> int:
     if name == "event":
         payload = event_schema()
+    elif name == "evidence-span":
+        payload = evidence_span_schema()
     elif name == "finding":
         payload = finding_schema()
     elif name == "adapter":
         payload = adapter_capability_report_schema()
+    elif name == "policy":
+        payload = policy_schema()
     else:
         payload = schema_bundle()
     _print_json(payload, stdout)
@@ -111,6 +123,40 @@ def _run_claims(as_json: bool, stdout: TextIO) -> int:
         print("Non-claims:", file=stdout)
         for claim in payload.not_allowed:
             print(f"- {claim}", file=stdout)
+    return 0
+
+
+def _policy_defaults_payload() -> dict[str, Any]:
+    severity_order = [
+        severity.value
+        for severity, _rank in sorted(SEVERITY_ORDER.items(), key=lambda item: item[1])
+    ]
+    disposition_order = [
+        disposition.value
+        for disposition, _rank in sorted(
+            DISPOSITION_ORDER.items(), key=lambda item: item[1]
+        )
+    ]
+    return {
+        "policy_version": "mf-03",
+        "severity_order": severity_order,
+        "disposition_order": disposition_order,
+        "default_config": PolicyConfig().to_dict(),
+    }
+
+
+def _run_policy(as_json: bool, stdout: TextIO) -> int:
+    payload = _policy_defaults_payload()
+    if as_json:
+        _print_json(payload, stdout)
+    else:
+        print(f"Policy version: {payload['policy_version']}", file=stdout)
+        print("Severity order:", file=stdout)
+        for severity in payload["severity_order"]:
+            print(f"- {severity}", file=stdout)
+        print("Disposition order:", file=stdout)
+        for disposition in payload["disposition_order"]:
+            print(f"- {disposition}", file=stdout)
     return 0
 
 
@@ -145,6 +191,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_risks(bool(args.as_json), sys.stdout)
     if args.command == "claims":
         return _run_claims(bool(args.as_json), sys.stdout)
+    if args.command == "policy":
+        return _run_policy(bool(args.as_json), sys.stdout)
     if args.command == "conformance":
         return _run_conformance(str(args.adapter), bool(args.as_json), sys.stdout)
     parser.error(f"unknown command: {args.command}")

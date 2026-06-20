@@ -1,6 +1,10 @@
+from typing import Any
+
 from jsonschema import Draft202012Validator
 
 from memory_firewall import (
+    EvidenceField,
+    EvidenceSpan,
     MemoryEvent,
     MemoryFinding,
     MemoryOperation,
@@ -12,11 +16,32 @@ from memory_firewall import (
     adapter_capability_report_schema,
     claim_budget,
     demo_memory_adapter,
+    evidence_span_schema,
     event_schema,
     finding_schema,
+    policy_schema,
     risk_taxonomy,
 )
 from memory_firewall.schema import schema_bundle
+
+
+def _policy_contract_payload() -> dict[str, Any]:
+    return {
+        "policy_version": "mf-03",
+        "severity_order": ["informational", "suspicious", "high_impact"],
+        "disposition_order": ["pass", "warn", "review", "quarantine"],
+        "config_schema": {
+            "suspicious_review_confidence": 0.75,
+            "high_impact_quarantine_confidence": 0.9,
+            "metadata": {},
+        },
+        "recommendation_schema": {
+            "finding_id": "mffind_v1_test",
+            "recommended_disposition": "review",
+            "reason_codes": ["severity:suspicious"],
+            "policy_version": "mf-03",
+        },
+    }
 
 
 def test_event_schema_contains_required_contract_fields() -> None:
@@ -40,10 +65,11 @@ def test_finding_schema_uses_frozen_risk_taxonomy() -> None:
 def test_schema_bundle_includes_claim_budget() -> None:
     bundle = schema_bundle()
     budget = claim_budget()
-    assert bundle["schema_version"] == "mf-02"
+    assert bundle["schema_version"] == "mf-03"
     assert bundle["claim_budget"]["allowed"] == list(budget.allowed)
     assert any("Does not scan real stores yet" in item for item in budget.not_allowed)
     assert "adapter_capability_report_schema" in bundle
+    assert "policy_schema" in bundle
 
 
 def test_model_outputs_validate_against_exported_schemas() -> None:
@@ -67,7 +93,12 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
         risk_category=RiskCategory.PROVENANCE_GAP,
         severity=RiskSeverity.INFORMATIONAL,
         confidence=0.2,
-        evidence_span="The CRM returned owner Alice.",
+        evidence_span=EvidenceSpan(
+            source_field=EvidenceField.PROPOSED_MEMORY,
+            start=0,
+            end=len("Account owner"),
+            quote="Account owner",
+        ),
         detector_name="schema-test",
         detector_version="0.1.0",
         explanation="Schema validation smoke.",
@@ -75,9 +106,14 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     )
 
     Draft202012Validator.check_schema(event_schema())
+    Draft202012Validator.check_schema(evidence_span_schema())
     Draft202012Validator.check_schema(finding_schema())
     Draft202012Validator.check_schema(adapter_capability_report_schema())
+    Draft202012Validator.check_schema(policy_schema())
     Draft202012Validator(event_schema()).validate(event.to_dict())
+    Draft202012Validator(evidence_span_schema()).validate(
+        finding.evidence_span.to_dict()
+    )
     Draft202012Validator(finding_schema()).validate(finding.to_dict())
     Draft202012Validator(adapter_capability_report_schema()).validate(
         demo_memory_adapter().capability_report.to_dict()
@@ -91,5 +127,69 @@ def test_adapter_schema_rejects_supported_and_unsupported_overlap() -> None:
     errors = list(
         Draft202012Validator(adapter_capability_report_schema()).iter_errors(payload)
     )
+
+    assert errors
+
+
+def test_policy_schema_accepts_canonical_policy_contract_payload() -> None:
+    Draft202012Validator(policy_schema()).validate(_policy_contract_payload())
+
+
+def test_evidence_span_schema_rejects_empty_or_out_of_bounds_spans() -> None:
+    validator = Draft202012Validator(evidence_span_schema())
+    empty_errors = list(
+        validator.iter_errors(
+            {
+                "source_field": "proposed_memory",
+                "start": 0,
+                "end": 0,
+                "quote": "",
+            }
+        )
+    )
+    out_of_bounds_errors = list(
+        validator.iter_errors(
+            {
+                "source_field": "proposed_memory",
+                "start": 16_384,
+                "end": 16_385,
+                "quote": "x",
+            }
+        )
+    )
+
+    assert empty_errors
+    assert out_of_bounds_errors
+
+
+def test_policy_schema_rejects_empty_reason_codes() -> None:
+    payload = _policy_contract_payload()
+    payload["recommendation_schema"] = {
+        **payload["recommendation_schema"],
+        "reason_codes": [],
+    }
+
+    errors = list(Draft202012Validator(policy_schema()).iter_errors(payload))
+
+    assert errors
+
+
+def test_policy_schema_freezes_order_arrays() -> None:
+    payload = _policy_contract_payload()
+    payload["severity_order"] = ["suspicious", "informational", "high_impact"]
+
+    errors = list(Draft202012Validator(policy_schema()).iter_errors(payload))
+
+    assert errors
+
+
+def test_policy_schema_mirrors_metadata_limits() -> None:
+    payload = _policy_contract_payload()
+    payload["config_schema"] = {
+        **payload["config_schema"],
+        "metadata": {f"k{i}": "v" for i in range(65)},
+    }
+
+    errors = list(Draft202012Validator(policy_schema()).iter_errors(payload))
 
     assert errors
