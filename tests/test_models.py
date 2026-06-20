@@ -293,6 +293,30 @@ def test_memory_finding_rejects_invalid_confidence() -> None:
         raise AssertionError("MemoryFinding accepted confidence > 1")
 
 
+def test_memory_finding_rejects_non_numeric_confidence() -> None:
+    payload = _finding_payload_without_id()
+    payload["confidence"] = "0.4"
+
+    try:
+        MemoryFinding.from_detector_payload(payload)
+    except TypeError as exc:
+        assert "confidence" in str(exc)
+    else:
+        raise AssertionError("MemoryFinding accepted string confidence")
+
+
+def test_memory_finding_rejects_boolean_confidence() -> None:
+    payload = _finding_payload_without_id()
+    payload["confidence"] = True
+
+    try:
+        MemoryFinding.from_detector_payload(payload)
+    except TypeError as exc:
+        assert "confidence" in str(exc)
+    else:
+        raise AssertionError("MemoryFinding accepted boolean confidence")
+
+
 def test_memory_finding_rejects_string_limitations() -> None:
     payload = {
         "finding_id": "find_001",

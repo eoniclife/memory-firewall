@@ -97,3 +97,17 @@ Passed on branch `codex/mf-03-finding-policy-model` before draft PR creation:
 - `twine check` passed for both artifacts.
 - Installed-wheel smoke passed with `pip check`, `schema policy`,
   `policy --json`, and `conformance demo --json`.
+
+Fix-pass after self-review:
+
+- Tightened runtime/schema parity for numeric policy and finding fields:
+  `MemoryFinding.confidence` and `PolicyConfig` thresholds now reject booleans
+  and numeric strings instead of coercing them.
+- Tightened `PolicyRecommendation.reason_codes` so empty reason codes are
+  rejected consistently with the exported schema.
+- Added focused regression coverage for those parity checks.
+- Python 3.12 tests now pass with `49` tests.
+- mypy still passes for Python `3.10`, `3.11`, and `3.12`.
+- `compileall`, `doctor --json`, `schema bundle`, `schema policy`,
+  `policy --json`, `conformance demo --json`, `git diff --check`, build,
+  `twine check`, and installed-wheel smoke all pass after the fix-pass.

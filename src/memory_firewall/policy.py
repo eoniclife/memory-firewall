@@ -12,6 +12,7 @@ from .models import (
     RiskSeverity,
     _coerce_metadata,
     _freeze_metadata,
+    _require_probability,
     _require_string,
 )
 
@@ -46,10 +47,22 @@ class PolicyConfig:
     metadata: Mapping[str, JSONScalar] | None = None
 
     def __post_init__(self) -> None:
-        if not 0 <= self.suspicious_review_confidence <= 1:
-            raise ValueError("suspicious_review_confidence must be between 0 and 1")
-        if not 0 <= self.high_impact_quarantine_confidence <= 1:
-            raise ValueError("high_impact_quarantine_confidence must be between 0 and 1")
+        object.__setattr__(
+            self,
+            "suspicious_review_confidence",
+            _require_probability(
+                self.suspicious_review_confidence,
+                "suspicious_review_confidence",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "high_impact_quarantine_confidence",
+            _require_probability(
+                self.high_impact_quarantine_confidence,
+                "high_impact_quarantine_confidence",
+            ),
+        )
         if self.suspicious_review_confidence > self.high_impact_quarantine_confidence:
             raise ValueError(
                 "suspicious_review_confidence must be less than or equal to "
@@ -86,6 +99,8 @@ class PolicyRecommendation:
             raise TypeError("reason_codes must be a tuple of strings")
         if any(not isinstance(item, str) for item in self.reason_codes):
             raise TypeError("reason_codes must contain only strings")
+        if any(not item for item in self.reason_codes):
+            raise ValueError("reason_codes must not contain empty strings")
         _require_string(
             self.policy_version,
             "policy_version",

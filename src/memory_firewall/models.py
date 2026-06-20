@@ -194,6 +194,15 @@ def _require_int(value: Any, field_name: str) -> int:
     return value
 
 
+def _require_probability(value: Any, field_name: str) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise TypeError(f"{field_name} must be a number")
+    probability = float(value)
+    if not 0 <= probability <= 1:
+        raise ValueError(f"{field_name} must be between 0 and 1")
+    return probability
+
+
 def _coerce_enum(enum_type: type[EnumT], value: Any, field_name: str) -> EnumT:
     if isinstance(value, enum_type):
         return value
@@ -521,8 +530,9 @@ class MemoryFinding:
             raise TypeError("risk_category must be a RiskCategory")
         if not isinstance(self.severity, RiskSeverity):
             raise TypeError("severity must be a RiskSeverity")
-        if not 0 <= self.confidence <= 1:
-            raise ValueError("confidence must be between 0 and 1")
+        object.__setattr__(
+            self, "confidence", _require_probability(self.confidence, "confidence")
+        )
         if not isinstance(self.evidence_span, EvidenceSpan):
             raise TypeError("evidence_span must be an EvidenceSpan")
         _require_string(
@@ -616,7 +626,7 @@ class MemoryFinding:
                 RiskCategory, value["risk_category"], "risk_category"
             ),
             severity=_coerce_enum(RiskSeverity, value["severity"], "severity"),
-            confidence=float(value["confidence"]),
+            confidence=_require_probability(value["confidence"], "confidence"),
             evidence_span=EvidenceSpan.from_dict(value["evidence_span"]),
             detector_name=_require_string(
                 value["detector_name"],

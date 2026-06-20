@@ -105,6 +105,19 @@ def test_policy_recommendation_rejects_string_reason_codes() -> None:
         raise AssertionError("PolicyRecommendation accepted string reason_codes")
 
 
+def test_policy_recommendation_rejects_empty_reason_code() -> None:
+    try:
+        PolicyRecommendation(
+            finding_id="mffind_v1_test",
+            recommended_disposition=RecommendedDisposition.REVIEW,
+            reason_codes=("",),
+        )
+    except ValueError as exc:
+        assert "reason_codes" in str(exc)
+    else:
+        raise AssertionError("PolicyRecommendation accepted empty reason code")
+
+
 def test_policy_config_rejects_invalid_threshold_order() -> None:
     try:
         PolicyConfig(
@@ -115,3 +128,21 @@ def test_policy_config_rejects_invalid_threshold_order() -> None:
         assert "less than or equal" in str(exc)
     else:
         raise AssertionError("PolicyConfig accepted inverted thresholds")
+
+
+def test_policy_config_rejects_non_numeric_threshold() -> None:
+    try:
+        PolicyConfig(suspicious_review_confidence="0.5")  # type: ignore[arg-type]
+    except TypeError as exc:
+        assert "suspicious_review_confidence" in str(exc)
+    else:
+        raise AssertionError("PolicyConfig accepted string threshold")
+
+
+def test_policy_config_rejects_boolean_threshold() -> None:
+    try:
+        PolicyConfig(high_impact_quarantine_confidence=True)
+    except TypeError as exc:
+        assert "high_impact_quarantine_confidence" in str(exc)
+    else:
+        raise AssertionError("PolicyConfig accepted boolean threshold")
