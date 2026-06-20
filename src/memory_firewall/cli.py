@@ -18,6 +18,7 @@ from .demo import run_poison_demo
 from .doctor import doctor_report
 from .models import MemoryEvent
 from .policy import DISPOSITION_ORDER, SEVERITY_ORDER, PolicyConfig
+from .proxy import ProxyMode, run_reference_proxy
 from .review import (
     ReviewQueue,
     allow_review_item,
@@ -43,6 +44,7 @@ from .schema import (
     finding_schema,
     override_receipt_schema,
     policy_schema,
+    reference_proxy_result_schema,
     review_queue_schema,
     scan_result_schema,
     schema_bundle,
@@ -89,6 +91,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "override-receipt",
             "trusted-read-preview",
             "demo-result",
+            "reference-proxy-result",
             "bundle",
         ),
         help="Schema to print.",
@@ -278,6 +281,26 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     poison_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    proxy_parser = subparsers.add_parser(
+        "proxy",
+        help="Run bounded local reference proxy flows.",
+    )
+    proxy_subparsers = proxy_parser.add_subparsers(
+        dest="proxy_command",
+        required=True,
+    )
+    reference_parser = proxy_subparsers.add_parser(
+        "reference",
+        help="Run the custom SQLite reference proxy demo.",
+    )
+    reference_parser.add_argument(
+        "--mode",
+        choices=tuple(mode.value for mode in ProxyMode),
+        default=ProxyMode.OBSERVE.value,
+        help="Reference proxy mode to run.",
+    )
+    reference_parser.add_argument("--json", action="store_true", dest="as_json")
+
     return parser
 
 
@@ -322,6 +345,8 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = trusted_read_preview_schema()
     elif name == "demo-result":
         payload = demo_result_schema()
+    elif name == "reference-proxy-result":
+        payload = reference_proxy_result_schema()
     else:
         payload = schema_bundle()
     _print_json(payload, stdout)
@@ -686,6 +711,30 @@ def _run_demo_poison(as_json: bool, stdout: TextIO) -> int:
     return 0
 
 
+def _run_proxy_reference(mode: str, as_json: bool, stdout: TextIO) -> int:
+    result = run_reference_proxy(mode)
+    outcome = result.outcome()
+    if as_json:
+        _print_json(result.to_dict(), stdout)
+    else:
+        print(f"{result.proxy_version}: reference proxy {result.mode.value}", file=stdout)
+        print(
+            f"- native answer: {outcome['native_answer']}",
+            file=stdout,
+        )
+        print(
+            f"- governed context answer: {outcome['governed_context_answer']}",
+            file=stdout,
+        )
+        print(
+            f"- high-risk events: {outcome['high_risk_events']}; "
+            f"suppressed native writes: "
+            f"{len(outcome['suppressed_native_event_ids'])}",
+            file=stdout,
+        )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the Memory Firewall CLI."""
 
@@ -782,6 +831,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if demo_command == "poison":
             return _run_demo_poison(bool(args.as_json), sys.stdout)
         parser.error(f"unknown demo command: {demo_command}")
+    if args.command == "proxy":
+        proxy_command = str(args.proxy_command)
+        if proxy_command == "reference":
+            return _run_proxy_reference(
+                str(args.mode),
+                bool(args.as_json),
+                sys.stdout,
+            )
+        parser.error(f"unknown proxy command: {proxy_command}")
     parser.error(f"unknown command: {args.command}")
     return 2
 

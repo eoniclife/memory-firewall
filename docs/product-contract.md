@@ -1,8 +1,9 @@
 # Memory Firewall Product Contract
 
-MF-08 adds a deterministic local poisoning demo over a toy memory store and the
-existing scan/review/preview surfaces while keeping real memory-store scanning,
-framework adapters, trusted ledger writes, and enforcement claims out of scope.
+MF-09 adds a custom SQLite reference proxy with explicit observe, overlay, and
+enforce behavior over a controlled local substrate while keeping real
+memory-store scanning, framework adapters, trusted ledger writes, and production
+enforcement claims out of scope.
 
 ## Category Line
 
@@ -21,15 +22,15 @@ agent-memory-contracts
 memory-firewall
     Public contract, detector pack, AMC candidate/evidence preview, normalized
     event-stream scan/watch, local review queue, override receipts, trusted-read
-    preview, poisoning demo, conformance probe, and CLI shell for the future
-    inspection/demo/reference guardrail
+    preview, poisoning demo, reference proxy, conformance probe, and CLI shell
+    for the future inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-08 Allows
+## MF-09 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -74,12 +75,21 @@ private orchestration layer
 - a deterministic local poisoning demo over a toy last-write-wins memory store;
 - `memory-firewall demo poison --json`;
 - a machine-readable `demo-result` schema;
+- a custom SQLite reference proxy controlled by this package;
+- `memory-firewall proxy reference --mode observe|overlay|enforce --json`;
+- observe mode that preserves native writes while reporting scan/review
+  outcomes;
+- overlay mode that preserves native writes while exposing a separate governed
+  context preview for clean pass records;
+- enforce mode that suppresses high-risk writes only inside the reference
+  SQLite store;
+- a machine-readable `reference-proxy-result` schema;
 - machine-readable adapter capability reports;
 - a conformance probe over the built-in fake adapter;
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-08 Does Not Allow
+## MF-09 Does Not Allow
 
 - real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -94,8 +104,12 @@ private orchestration layer
   production read broker;
 - claims that the poisoning demo is a benchmark, real adapter, real memory
   framework, or production enforcement proof;
+- claims that the reference proxy is Mem0, Hermes, GBrain, LangChain, Letta,
+  Zep, vector-store, or production framework support;
+- claims that reference enforce mode secures native memory outside the
+  controlled SQLite substrate;
 - real framework adapter claims;
-- enforcement claims;
+- production enforcement claims;
 - claims that Memory Firewall determines objective truth;
 - claims that Memory Firewall secures an entire agent.
 
@@ -325,6 +339,37 @@ wrap Mem0, Letta, Zep, Hermes, GBrain, LangChain, SQLite, a vector database, or
 any real memory substrate. It is not a benchmark and does not prove that Memory
 Firewall detects every poisoning attempt.
 
+## Reference Proxy Surface
+
+MF-09 adds:
+
+- `memory-firewall proxy reference --mode observe`;
+- `memory-firewall proxy reference --mode overlay`;
+- `memory-firewall proxy reference --mode enforce`;
+- `memory-firewall proxy reference --mode enforce --json`;
+- `memory-firewall schema reference-proxy-result`.
+
+The reference proxy uses a local SQLite store owned by this package. It runs the
+same two-record project-codename fixture used by the poisoning demo through the
+existing scan, review queue, and trusted-read preview path.
+
+Mode behavior is deliberately explicit:
+
+- `observe`: native writes are preserved; the native read returns the forged
+  value `Mirage`; no governed context channel is provided.
+- `overlay`: native writes are preserved; the native read returns `Mirage`; a
+  separate governed context preview returns the clean signed-record value
+  `Helio`.
+- `enforce`: the high-risk write is suppressed inside the reference store; the
+  native read and governed context preview both return `Helio`.
+
+The governed context preview is not a trusted ledger write, reducer decision,
+or production read broker. It is a local reference-channel preview for this
+controlled substrate. Reference enforce mode does not imply that Memory
+Firewall can suppress writes in Mem0, Letta, Zep, Hermes, GBrain, LangChain,
+SQLite databases it does not control, vector stores, or any other real memory
+framework.
+
 ## Adapter Capability Surface
 
 The adapter capability report contains:
@@ -367,8 +412,9 @@ Disposition describes the recommended handling:
 - `review`
 - `quarantine`
 
-`quarantine` is only an advisory disposition value. MF-08 implements local
-review-queue storage, not quarantine enforcement or adapter suppression.
+`quarantine` is only an advisory disposition value. MF-09 implements local
+review-queue storage and a reference-store enforce demo, not production
+framework quarantine or adapter suppression.
 
 Use `poisoned` only for attack demos or confirmed adversarial cases. Normal
 findings should distinguish severity from disposition according to the actual

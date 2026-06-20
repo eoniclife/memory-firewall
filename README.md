@@ -14,9 +14,8 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository is in MF-08: a deterministic local poisoning demo over the
-existing scan, review queue, override receipt, and trusted-read preview
-surfaces.
+This repository is in MF-09: a custom SQLite reference proxy with explicit
+observe, overlay, and enforce behavior over a controlled local substrate.
 
 Implemented now:
 
@@ -35,13 +34,14 @@ Implemented now:
 - deterministic allow/reject override receipts with required reasons;
 - local trusted-read preview over allowed review items;
 - deterministic local poisoning demo over a toy last-write-wins memory store;
+- custom SQLite reference proxy for local observe, overlay, and enforce demos;
 - adapter capability report model and schema;
 - a built-in fake adapter conformance probe;
-- machine-readable event/finding/detector/state-analysis/scan/review/demo
+- machine-readable event/finding/detector/state-analysis/scan/review/demo/proxy
   schemas;
 - risk taxonomy and claim budget;
 - CLI commands for `doctor`, `schema`, `risks`, `claims`, `policy`, `detect`,
-  `analyze`, `scan`, `watch`, `review`, `demo`, and `conformance`;
+  `analyze`, `scan`, `watch`, `review`, `demo`, `proxy`, and `conformance`;
 - CI, package metadata, and review packet.
 
 Not implemented yet:
@@ -51,7 +51,7 @@ Not implemented yet:
 - trusted ledger writes;
 - HTML reports;
 - framework adapters;
-- enforce mode.
+- enforce mode outside the built-in reference substrate.
 
 ## Install For Development
 
@@ -69,6 +69,7 @@ uv run --python 3.12 --extra dev memory-firewall schema review-queue
 uv run --python 3.12 --extra dev memory-firewall schema override-receipt
 uv run --python 3.12 --extra dev memory-firewall schema trusted-read-preview
 uv run --python 3.12 --extra dev memory-firewall schema demo-result
+uv run --python 3.12 --extra dev memory-firewall schema reference-proxy-result
 uv run --python 3.12 --extra dev memory-firewall risks
 uv run --python 3.12 --extra dev memory-firewall claims
 uv run --python 3.12 --extra dev memory-firewall policy --json
@@ -82,6 +83,9 @@ uv run --python 3.12 --extra dev memory-firewall review allow --queue review-que
 uv run --python 3.12 --extra dev memory-firewall review reject --queue review-queue.json --item-id ITEM_ID --reason "does not match source of record" --json
 uv run --python 3.12 --extra dev memory-firewall review trusted-read-preview --queue review-queue.json --json
 uv run --python 3.12 --extra dev memory-firewall demo poison --json
+uv run --python 3.12 --extra dev memory-firewall proxy reference --mode observe --json
+uv run --python 3.12 --extra dev memory-firewall proxy reference --mode overlay --json
+uv run --python 3.12 --extra dev memory-firewall proxy reference --mode enforce --json
 uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 ```
 
@@ -92,8 +96,8 @@ objective truth, secure an entire agent, stop every poisoning attack, or
 automatically approve important memories.
 
 The broader public launch target is an installable local artifact for inspecting
-and explaining integrity risks in persistent agent memory. MF-08 still does not
-connect to real stores. It can run deterministic heuristic detectors and
+and explaining integrity risks in persistent agent memory. MF-09 still does not
+connect to real stores or frameworks. It can run deterministic heuristic detectors and
 state-analysis over caller-supplied normalized `MemoryEvent` JSON or JSONL
 streams, carry scan-local assertion context to surface contradictions, and emit
 structured PASS/WARN/HIGH-RISK output. Scan-local context is bounded and seeded
@@ -117,6 +121,15 @@ write becomes a high-risk review item; pending and rejected items stay out of
 trusted-read preview, while an explicit override path appears only with a local
 receipt. This is a runnable demo, not a benchmark, real adapter, or production
 enforcement claim.
+
+MF-09 adds `memory-firewall proxy reference --mode observe|overlay|enforce
+--json`. The reference proxy uses a built-in SQLite store controlled by this
+package. Observe mode preserves native writes and reports what the firewall saw.
+Overlay mode preserves native writes and exposes a separate governed context
+preview for clean pass records. Enforce mode suppresses high-risk writes inside
+this reference store and keeps the governed context preview clean. This is not
+Mem0, Hermes, GBrain, LangChain, Letta, Zep, vector-store, or production
+framework support.
 
 ## Relationship To Agent Memory Contracts
 

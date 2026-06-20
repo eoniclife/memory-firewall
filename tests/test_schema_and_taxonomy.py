@@ -26,6 +26,7 @@ from memory_firewall import (
     finding_schema,
     override_receipt_schema,
     policy_schema,
+    reference_proxy_result_schema,
     review_queue_schema,
     risk_taxonomy,
     run_detectors,
@@ -78,7 +79,7 @@ def test_finding_schema_uses_frozen_risk_taxonomy() -> None:
 def test_schema_bundle_includes_claim_budget() -> None:
     bundle = schema_bundle()
     budget = claim_budget()
-    assert bundle["schema_version"] == "mf-08"
+    assert bundle["schema_version"] == "mf-09"
     assert bundle["claim_budget"]["allowed"] == list(budget.allowed)
     assert any("Does not scan real stores" in item for item in budget.not_allowed)
     assert any("not a benchmark" in item for item in budget.not_allowed)
@@ -93,6 +94,7 @@ def test_schema_bundle_includes_claim_budget() -> None:
     assert "override_receipt_schema" in bundle
     assert "trusted_read_preview_schema" in bundle
     assert "demo_result_schema" in bundle
+    assert "reference_proxy_result_schema" in bundle
     assert bundle["default_detector_pack"]["version"] == "mf-04"
 
 
@@ -143,6 +145,7 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     Draft202012Validator.check_schema(override_receipt_schema())
     Draft202012Validator.check_schema(trusted_read_preview_schema())
     Draft202012Validator.check_schema(demo_result_schema())
+    Draft202012Validator.check_schema(reference_proxy_result_schema())
     Draft202012Validator(event_schema()).validate(event.to_dict())
     Draft202012Validator(evidence_span_schema()).validate(
         finding.evidence_span.to_dict()
