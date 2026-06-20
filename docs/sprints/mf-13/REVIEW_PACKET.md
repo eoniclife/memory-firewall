@@ -1,0 +1,184 @@
+# MF-13 Hermes Observation Report
+
+## Scope
+
+MF-13 makes the observe-only Hermes hook easier to dogfood after installation.
+
+It adds:
+
+- `memory-firewall hermes observations`;
+- `memory-firewall hermes observations --json`;
+- `memory-firewall schema hermes-observations`;
+- redacted newest-first summaries over local Hermes diagnostics;
+- README, product contract, claim budget, version, schema, and tests.
+
+## Trigger
+
+After MF-12 merged, local dogfood proved that Memory Firewall can be installed
+into the user's Hermes environment, listed by Hermes' CLI, enabled, and loaded by
+Hermes' runtime plugin manager. The remaining usability gap was that
+`memory-firewall hermes status` showed aggregate counts only.
+
+The user still needed a local way to answer:
+
+```text
+What did my agent try to remember, what risk did Memory Firewall see, and why
+should I care?
+```
+
+## Public Behavior
+
+The new command reads existing local diagnostics from:
+
+```text
+~/.hermes/memory-firewall/observations.jsonl
+```
+
+or from `--state-dir`.
+
+It emits redacted rows with:
+
+- row number;
+- recorded time;
+- hook name;
+- tool name;
+- target namespace;
+- event ID;
+- operation;
+- source authority;
+- level;
+- highest disposition;
+- finding count;
+- contradiction count;
+- risk categories;
+- detector names.
+
+It does not print raw candidate memory text or proposed memory text.
+
+## Commands
+
+```bash
+memory-firewall hermes status --json
+memory-firewall hermes observations --limit 20 --json
+memory-firewall schema hermes-observations
+```
+
+## Non-Goals
+
+- No Hermes core patch.
+- No provider replacement.
+- No Mem0/Honcho/GBrain write suppression.
+- No trusted ledger writes.
+- No trusted context injection.
+- No hosted dashboard or telemetry.
+- No production enforcement claim.
+- No release tag, PyPI publish, or external launch execution.
+
+## Review Focus
+
+- Does `hermes observations` avoid printing raw/proposed memory content?
+- Does the output give enough signal to understand recent Hermes memory risk?
+- Are rows newest-first and correctly limited?
+- Does the schema match the CLI JSON payload?
+- Do docs avoid implying enforcement, provider wrapping, or raw trace export?
+- Does the version/schema advance cleanly to MF-13?
+
+## Expected Gates
+
+```bash
+uv run --python 3.12 --extra dev pytest tests/test_hermes.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q
+uv run --python 3.12 --extra dev mypy src/memory_firewall/hermes.py src/memory_firewall/cli.py src/memory_firewall/schema.py src/memory_firewall/__init__.py tests/test_hermes.py tests/test_cli.py tests/test_schema_and_taxonomy.py
+uv run --python 3.12 --extra dev pytest -q
+UV_PROJECT_ENVIRONMENT=.venv-310-mypy uv run --python 3.10 --extra dev mypy src tests
+UV_PROJECT_ENVIRONMENT=.venv-311-mypy uv run --python 3.11 --extra dev mypy src tests
+UV_PROJECT_ENVIRONMENT=.venv-312-mypy uv run --python 3.12 --extra dev mypy src tests
+uv run --python 3.12 --extra dev python -m compileall -q src tests
+uv run --python 3.12 --extra dev memory-firewall doctor --json
+uv run --python 3.12 --extra dev memory-firewall schema bundle
+uv run --python 3.12 --extra dev memory-firewall schema hermes-observations
+uv run --python 3.12 --extra dev memory-firewall hermes observations --state-dir <temp-dir> --json
+git diff --check
+uv build --out-dir /tmp/memory-firewall-mf13-dist
+uv run --python 3.12 --extra dev twine check /tmp/memory-firewall-mf13-dist/*
+```
+
+Dogfood should additionally verify that the installed package can record a
+bounded Hermes observation in a temp state directory and then show it through the
+new observations command without printing raw candidate memory text.
+
+## Local Gate Results
+
+- focused MF-13/Hermes/schema tests:
+  `uv run --python 3.12 --extra dev pytest tests/test_hermes.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
+  - `59` passed.
+- focused type checks:
+  `uv run --python 3.12 --extra dev mypy src/memory_firewall/hermes.py src/memory_firewall/cli.py src/memory_firewall/schema.py src/memory_firewall/__init__.py tests/test_hermes.py tests/test_cli.py tests/test_schema_and_taxonomy.py`
+  - `Success: no issues found in 7 source files`.
+- full test suite:
+  `uv run --python 3.12 --extra dev pytest -q`
+  - passed.
+- full type checks:
+  - `UV_PROJECT_ENVIRONMENT=.venv-310-mypy uv run --python 3.10 --extra dev mypy src tests`
+  - `UV_PROJECT_ENVIRONMENT=.venv-311-mypy uv run --python 3.11 --extra dev mypy src tests`
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-mypy uv run --python 3.12 --extra dev mypy src tests`
+  - all reported `Success: no issues found in 36 source files`.
+- bytecode and whitespace:
+  - `uv run --python 3.12 --extra dev python -m compileall -q src tests`
+  - `git diff --check`
+- CLI/schema/Hermes smokes:
+  - `memory-firewall doctor --json`
+  - `memory-firewall schema bundle`
+  - `memory-firewall schema hermes-observations`
+  - `memory-firewall hermes observations --state-dir <temp-dir> --json`
+  - `memory-firewall hermes install-plugin --hermes-home <temp-dir> --json`
+- package build and metadata:
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-build uv build --out-dir /tmp/memory-firewall-mf13-dist`
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-build uv run --python 3.12 --extra dev twine check /tmp/memory-firewall-mf13-dist/*`
+  - sdist and wheel passed.
+- installed-wheel smoke:
+  - created Python `3.12.11` venv with `uv venv`;
+  - installed `memory_firewall-0.1.0.dev13-py3-none-any.whl`;
+  - `memory-firewall --version` returned `0.1.0.dev13`;
+  - `memory-firewall schema hermes-observations` succeeded;
+  - `memory-firewall hermes observations --state-dir <temp-dir> --json`
+    succeeded for an empty diagnostics directory;
+  - `memory-firewall hermes install-plugin --hermes-home <temp-dir> --json`
+    wrote `plugin.yaml` and `__init__.py`;
+  - installed distribution metadata exposed and loaded the
+    `hermes_agent.plugins` entry point;
+  - `uv pip check` passed.
+
+## Dogfood Results
+
+Local Hermes target:
+
+- `Hermes Agent v0.16.0 (2026.6.5)`;
+- runtime Python: `~/.hermes/hermes-agent/venv/bin/python`.
+
+Observed with a temp diagnostics directory:
+
+- Hermes runtime `PluginManager` loaded `memory-firewall` as enabled;
+- registered hooks were `pre_tool_call`, `post_tool_call`, and `post_llm_call`;
+- invoking Hermes' `post_tool_call` hook for a built-in `memory` write produced
+  one high-risk observation;
+- `memory-firewall hermes observations --state-dir <temp-dir> --limit 5 --json`
+  returned one redacted row with:
+  - `level`: `high_risk`;
+  - `risk_categories`: `instruction_injection` and `provenance_gap`;
+  - `raw_content_included`: `false`;
+- grep confirmed the raw injected phrase was absent from the observations CLI
+  JSON output;
+- `memory-firewall hermes status --state-dir <temp-dir> --json` reported one
+  high-risk observation;
+- diagnostics permissions were verified:
+  - state dir: `0700`;
+  - `events.jsonl`: `0600`;
+  - `observations.jsonl`: `0600`.
+
+## Residual Risks
+
+- The command is still a local diagnostic readout, not a polished UI.
+- `observations.jsonl` itself may contain raw candidate memory text; only the
+  readout is redacted.
+- Runtime remains observe-only. Enforcement and provider wrapping remain later
+  sprints.

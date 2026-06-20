@@ -1,10 +1,10 @@
 # Memory Firewall Product Contract
 
-MF-12 adds a Hermes user-plugin shim installer over the first observe-only
-Hermes hook alpha and the existing scan, detector, review, proxy, and report
-surfaces while keeping broad real memory-store scanning, provider replacement,
-trusted ledger writes, hosted dashboards, and production enforcement claims out
-of scope.
+MF-13 adds a redacted Hermes observations readout over the first observe-only
+Hermes hook alpha, Hermes user-plugin shim installer, and existing scan,
+detector, review, proxy, and report surfaces while keeping broad real
+memory-store scanning, provider replacement, trusted ledger writes, hosted
+dashboards, and production enforcement claims out of scope.
 
 ## Category Line
 
@@ -25,15 +25,15 @@ memory-firewall
     event-stream scan/watch, local review queue, override receipts, trusted-read
     preview, poisoning demo, reference proxy, local static report, redacted
     share export, Hermes observe-only hook alpha, Hermes user-plugin shim
-    installer, conformance probe, and CLI shell for the future
-    inspection/demo/reference guardrail
+    installer, redacted Hermes observations readout, conformance probe, and CLI
+    shell for the future inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-12 Allows
+## MF-13 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -104,6 +104,9 @@ private orchestration layer
   or tightened with user-only local file permissions;
 - `memory-firewall hermes status --json`;
 - machine-readable `hermes-status` schema;
+- `memory-firewall hermes observations --json`;
+- redacted newest-first Hermes observation summaries over local diagnostics;
+- machine-readable `hermes-observations` schema;
 - opt-in turn-level scanning for implicit memory providers via
   `MEMORY_FIREWALL_HERMES_SCAN_TURNS=1`;
 - local configuration of the Hermes diagnostics directory via
@@ -117,7 +120,7 @@ private orchestration layer
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-12 Does Not Allow
+## MF-13 Does Not Allow
 
 - broad real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -141,6 +144,8 @@ private orchestration layer
   memory, MCP, or provider `sync_turn` writes;
 - claims that Hermes observations are trusted ledger records, reducer
   decisions, or approved memories;
+- claims that the Hermes observations CLI is a raw trace export or safe-to-share
+  transcript export;
 - automatic trusted-context injection into Hermes prompts;
 - claims that the local report is a hosted dashboard, telemetry service, auth
   system, billing system, or server process;
@@ -452,6 +457,13 @@ MF-12 adds:
 - a generated user-plugin shim at `~/.hermes/plugins/memory-firewall/`;
 - `--hermes-home`, `--force`, and `--json` installer options.
 
+MF-13 adds:
+
+- `memory-firewall hermes observations`;
+- `memory-firewall hermes observations --json`;
+- `memory-firewall schema hermes-observations`;
+- `--state-dir`, `--limit`, and `--json` observation readout options.
+
 The Hermes hook alpha is deliberately observe-only. It can be enabled by Hermes
 as a standalone plugin and can run alongside the active Hermes memory provider.
 It does not set `memory.provider`, wrap a provider, replace Mem0/Honcho, or
@@ -484,6 +496,12 @@ Hermes, configure a Hermes memory provider, or move runtime logic into the
 generated files. The generated `plugin.yaml` and `__init__.py` let current
 Hermes CLI discovery list and enable the installed package's observe-only hook
 module.
+
+The MF-13 observations readout is redacted. It shows recent observation
+metadata such as recorded time, hook/tool name, target namespace, event ID,
+level, disposition, finding count, contradiction count, risk categories, and
+detector names. It does not print raw candidate memory text or turn transcripts,
+and it does not make the underlying local diagnostics safe to share wholesale.
 
 ## Adapter Capability Surface
 

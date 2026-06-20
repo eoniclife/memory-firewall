@@ -33,6 +33,7 @@ from memory_firewall import (
     risk_taxonomy,
     redact_report_export,
     generate_demo_report,
+    hermes_observations_schema,
     run_detectors,
     scan_jsonl_events,
     scan_result_schema,
@@ -83,7 +84,7 @@ def test_finding_schema_uses_frozen_risk_taxonomy() -> None:
 def test_schema_bundle_includes_claim_budget() -> None:
     bundle = schema_bundle()
     budget = claim_budget()
-    assert bundle["schema_version"] == "mf-12"
+    assert bundle["schema_version"] == "mf-13"
     assert bundle["claim_budget"]["allowed"] == list(budget.allowed)
     assert any("broadly scan real stores" in item for item in budget.not_allowed)
     assert any("not a benchmark" in item for item in budget.not_allowed)
@@ -102,6 +103,7 @@ def test_schema_bundle_includes_claim_budget() -> None:
     assert "report_result_schema" in bundle
     assert "redacted_report_export_schema" in bundle
     assert "hermes_status_schema" in bundle
+    assert "hermes_observations_schema" in bundle
     assert bundle["default_detector_pack"]["version"] == "mf-04"
 
 
@@ -155,6 +157,7 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     Draft202012Validator.check_schema(reference_proxy_result_schema())
     Draft202012Validator.check_schema(report_result_schema())
     Draft202012Validator.check_schema(redacted_report_export_schema())
+    Draft202012Validator.check_schema(hermes_observations_schema())
     Draft202012Validator(event_schema()).validate(event.to_dict())
     Draft202012Validator(evidence_span_schema()).validate(
         finding.evidence_span.to_dict()
@@ -172,6 +175,20 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     Draft202012Validator(report_result_schema()).validate(report.to_dict())
     Draft202012Validator(redacted_report_export_schema()).validate(
         redact_report_export(report).to_dict()
+    )
+    Draft202012Validator(hermes_observations_schema()).validate(
+        {
+            "integration_version": "mf-13",
+            "state_dir": "/tmp/memory-firewall-hermes",
+            "limit": 20,
+            "total_observations": 0,
+            "returned_observations": 0,
+            "observations": [],
+            "mode": "observe",
+            "observe_only": True,
+            "production_enforcement": False,
+            "raw_content_included": False,
+        }
     )
 
 

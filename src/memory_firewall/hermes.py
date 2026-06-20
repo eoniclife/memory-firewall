@@ -27,7 +27,7 @@ from .models import (
 from .scan import ScanEventLevel, ScanEventResult, scan_event
 from .version import __version__
 
-HERMES_INTEGRATION_VERSION = "mf-12"
+HERMES_INTEGRATION_VERSION = "mf-13"
 HERMES_EVENTS_FILENAME = "events.jsonl"
 HERMES_OBSERVATIONS_FILENAME = "observations.jsonl"
 HERMES_PLUGIN_NAME = "memory-firewall"
@@ -452,6 +452,130 @@ class HermesObservation:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class HermesObservationSummary:
+    """Redacted row for inspecting a stored Hermes observation."""
+
+    integration_version: str
+    row_number: int
+    recorded_at: str
+    hook_name: str
+    tool_name: str
+    mode: str
+    blocked_by_firewall: bool
+    event_id: str
+    operation: str
+    source_authority: str
+    target_namespace: str
+    level: str
+    highest_disposition: str
+    finding_count: int
+    contradiction_count: int
+    risk_categories: tuple[str, ...]
+    detector_names: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.integration_version != HERMES_INTEGRATION_VERSION:
+            raise ValueError(
+                f"integration_version must be {HERMES_INTEGRATION_VERSION}"
+            )
+        if self.row_number < 1:
+            raise ValueError("row_number must be positive")
+        for field_name in (
+            "recorded_at",
+            "hook_name",
+            "tool_name",
+            "mode",
+            "event_id",
+            "operation",
+            "source_authority",
+            "target_namespace",
+            "level",
+            "highest_disposition",
+        ):
+            if not getattr(self, field_name):
+                raise ValueError(f"{field_name} must not be empty")
+        if self.mode != HERMES_DEFAULT_MODE:
+            raise ValueError(f"mode must be {HERMES_DEFAULT_MODE}")
+        if not isinstance(self.blocked_by_firewall, bool):
+            raise TypeError("blocked_by_firewall must be bool")
+        for field_name in ("finding_count", "contradiction_count"):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        for field_name in ("risk_categories", "detector_names"):
+            value = getattr(self, field_name)
+            if isinstance(value, str) or not isinstance(value, tuple):
+                raise TypeError(f"{field_name} must be a tuple")
+            if any(not isinstance(item, str) or not item for item in value):
+                raise ValueError(f"{field_name} must contain non-empty strings")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "integration_version": self.integration_version,
+            "row_number": self.row_number,
+            "recorded_at": self.recorded_at,
+            "hook_name": self.hook_name,
+            "tool_name": self.tool_name,
+            "mode": self.mode,
+            "blocked_by_firewall": self.blocked_by_firewall,
+            "event_id": self.event_id,
+            "operation": self.operation,
+            "source_authority": self.source_authority,
+            "target_namespace": self.target_namespace,
+            "level": self.level,
+            "highest_disposition": self.highest_disposition,
+            "finding_count": self.finding_count,
+            "contradiction_count": self.contradiction_count,
+            "risk_categories": list(self.risk_categories),
+            "detector_names": list(self.detector_names),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class HermesObservationList:
+    """Recent redacted rows over local Hermes observations."""
+
+    integration_version: str
+    state_dir: str
+    limit: int
+    total_observations: int
+    returned_observations: int
+    observations: tuple[HermesObservationSummary, ...]
+
+    def __post_init__(self) -> None:
+        if self.integration_version != HERMES_INTEGRATION_VERSION:
+            raise ValueError(
+                f"integration_version must be {HERMES_INTEGRATION_VERSION}"
+            )
+        if not self.state_dir:
+            raise ValueError("state_dir must not be empty")
+        if self.limit < 1:
+            raise ValueError("limit must be positive")
+        for field_name in ("total_observations", "returned_observations"):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        if self.returned_observations != len(self.observations):
+            raise ValueError("returned_observations must equal observations length")
+        if self.returned_observations > self.total_observations:
+            raise ValueError("returned_observations cannot exceed total_observations")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "integration_version": self.integration_version,
+            "state_dir": self.state_dir,
+            "limit": self.limit,
+            "total_observations": self.total_observations,
+            "returned_observations": self.returned_observations,
+            "observations": [item.to_dict() for item in self.observations],
+            "mode": HERMES_DEFAULT_MODE,
+            "observe_only": True,
+            "production_enforcement": False,
+            "raw_content_included": False,
+        }
+
+
 def scan_hermes_event(
     event: MemoryEvent,
     *,
@@ -780,6 +904,129 @@ def load_hermes_observations(
 
     output_dir = _resolve_hermes_state_dir(state_dir)
     return _load_jsonl(output_dir / HERMES_OBSERVATIONS_FILENAME)
+
+
+def _string_from_mapping(
+    value: Mapping[str, Any],
+    key: str,
+    *,
+    default: str,
+) -> str:
+    raw = value.get(key)
+    if isinstance(raw, str) and raw:
+        return raw
+    return default
+
+
+def _non_negative_int_from_mapping(value: Mapping[str, Any], key: str) -> int | None:
+    raw = value.get(key)
+    if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
+        return raw
+    return None
+
+
+def _tuple_field_from_findings(
+    findings: list[Any],
+    key: str,
+) -> tuple[str, ...]:
+    values: set[str] = set()
+    for item in findings:
+        if not isinstance(item, Mapping):
+            continue
+        raw = item.get(key)
+        if isinstance(raw, str) and raw:
+            values.add(raw)
+    return tuple(sorted(values))
+
+
+def _hermes_observation_summary_from_row(
+    row: Mapping[str, Any],
+    *,
+    row_number: int,
+) -> HermesObservationSummary:
+    event = row.get("event")
+    event_payload = event if isinstance(event, Mapping) else {}
+    scan = row.get("scan")
+    scan_payload = scan if isinstance(scan, Mapping) else {}
+    detector_result = scan_payload.get("detector_result")
+    detector_payload = detector_result if isinstance(detector_result, Mapping) else {}
+    raw_findings = detector_payload.get("findings")
+    findings = raw_findings if isinstance(raw_findings, list) else []
+    finding_count = _non_negative_int_from_mapping(scan_payload, "finding_count")
+    if finding_count is None:
+        finding_count = sum(1 for item in findings if isinstance(item, Mapping))
+    contradiction_count = _non_negative_int_from_mapping(
+        scan_payload,
+        "contradiction_count",
+    )
+    if contradiction_count is None:
+        contradiction_count = 0
+    blocked = row.get("blocked_by_firewall")
+    return HermesObservationSummary(
+        integration_version=HERMES_INTEGRATION_VERSION,
+        row_number=row_number,
+        recorded_at=_string_from_mapping(
+            row,
+            "recorded_at",
+            default="unknown-recorded-at",
+        ),
+        hook_name=_string_from_mapping(row, "hook_name", default="unknown-hook"),
+        tool_name=_string_from_mapping(row, "tool_name", default="unknown-tool"),
+        mode=_string_from_mapping(row, "mode", default=HERMES_DEFAULT_MODE),
+        blocked_by_firewall=blocked if isinstance(blocked, bool) else False,
+        event_id=_string_from_mapping(event_payload, "event_id", default="unknown-event"),
+        operation=_string_from_mapping(
+            event_payload,
+            "operation",
+            default="unknown-operation",
+        ),
+        source_authority=_string_from_mapping(
+            event_payload,
+            "source_authority",
+            default="unknown-authority",
+        ),
+        target_namespace=_string_from_mapping(
+            event_payload,
+            "target_namespace",
+            default="unknown-target",
+        ),
+        level=_string_from_mapping(scan_payload, "level", default="unknown-level"),
+        highest_disposition=_string_from_mapping(
+            scan_payload,
+            "highest_disposition",
+            default="unknown-disposition",
+        ),
+        finding_count=finding_count,
+        contradiction_count=contradiction_count,
+        risk_categories=_tuple_field_from_findings(findings, "risk_category"),
+        detector_names=_tuple_field_from_findings(findings, "detector_name"),
+    )
+
+
+def recent_hermes_observations(
+    *,
+    state_dir: str | Path | None = None,
+    limit: int = 20,
+) -> HermesObservationList:
+    """Return newest-first redacted summaries over local Hermes observations."""
+
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        raise ValueError("limit must be a positive integer")
+    output_dir = _resolve_hermes_state_dir(state_dir)
+    rows = load_hermes_observations(state_dir=output_dir)
+    summaries = tuple(
+        _hermes_observation_summary_from_row(row, row_number=index)
+        for index, row in enumerate(rows, start=1)
+    )
+    recent = tuple(reversed(summaries[-limit:]))
+    return HermesObservationList(
+        integration_version=HERMES_INTEGRATION_VERSION,
+        state_dir=str(output_dir),
+        limit=limit,
+        total_observations=len(rows),
+        returned_observations=len(recent),
+        observations=recent,
+    )
 
 
 def summarize_hermes_observations(

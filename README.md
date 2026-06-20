@@ -14,9 +14,9 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository is in MF-12: a first observe-only Hermes hook alpha plus a
-Hermes user-plugin shim installer over the existing Memory Firewall
-scan/detector/report surfaces.
+This repository is in MF-13: a first observe-only Hermes hook alpha, Hermes
+user-plugin shim installer, and redacted recent-observations readout over the
+existing Memory Firewall scan/detector/report surfaces.
 
 Implemented now:
 
@@ -42,11 +42,12 @@ Implemented now:
   `post_llm_call`;
 - a Hermes user-plugin shim installer for Hermes versions whose CLI cannot
   enable entry-point-only plugins;
-- local Hermes diagnostics JSONL and `memory-firewall hermes status`;
+- local Hermes diagnostics JSONL, `memory-firewall hermes status`, and
+  redacted `memory-firewall hermes observations`;
 - adapter capability report model and schema;
 - a built-in fake adapter conformance probe;
 - machine-readable event/finding/detector/state-analysis/scan/review/demo/proxy/report/Hermes
-  status schemas;
+  status and Hermes observations schemas;
 - risk taxonomy and claim budget;
 - CLI commands for `doctor`, `schema`, `risks`, `claims`, `policy`, `detect`,
   `analyze`, `scan`, `watch`, `review`, `demo`, `proxy`, `report`, `hermes`, and
@@ -82,6 +83,7 @@ uv run --python 3.12 --extra dev memory-firewall schema reference-proxy-result
 uv run --python 3.12 --extra dev memory-firewall schema report-result
 uv run --python 3.12 --extra dev memory-firewall schema redacted-report-export
 uv run --python 3.12 --extra dev memory-firewall schema hermes-status
+uv run --python 3.12 --extra dev memory-firewall schema hermes-observations
 uv run --python 3.12 --extra dev memory-firewall risks
 uv run --python 3.12 --extra dev memory-firewall claims
 uv run --python 3.12 --extra dev memory-firewall policy --json
@@ -100,12 +102,13 @@ uv run --python 3.12 --extra dev memory-firewall proxy reference --mode overlay 
 uv run --python 3.12 --extra dev memory-firewall proxy reference --mode enforce --json
 uv run --python 3.12 --extra dev memory-firewall report demo --out ./memory-integrity-report --json
 uv run --python 3.12 --extra dev memory-firewall hermes status --json
+uv run --python 3.12 --extra dev memory-firewall hermes observations --limit 20 --json
 uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 ```
 
 ## Hermes Hook Alpha
 
-The MF-12 Hermes integration is observe-only. Install the package into the same
+The MF-13 Hermes integration is observe-only. Install the package into the same
 Python environment that runs Hermes, install the Hermes user-plugin shim, enable
 the `memory-firewall` plugin in Hermes, then start a fresh Hermes session.
 
@@ -114,6 +117,7 @@ python -m pip install -e .
 memory-firewall hermes install-plugin
 hermes plugins enable memory-firewall
 memory-firewall hermes status --json
+memory-firewall hermes observations --limit 20 --json
 ```
 
 By default the plugin records only high-signal memory write tool attempts.
@@ -124,6 +128,11 @@ is created or tightened to user-only permissions, and `events.jsonl` /
 Set
 `MEMORY_FIREWALL_HERMES_SCAN_TURNS=1` only if you want noisy turn-level
 observations for implicit memory-provider writes.
+
+`memory-firewall hermes observations` shows newest-first redacted summaries over
+the local Hermes diagnostics: recorded time, hook/tool, target namespace,
+event ID, level, disposition, finding count, contradiction count, and risk
+categories. It does not print raw candidate memory text.
 
 ## Product Boundary
 
@@ -191,6 +200,11 @@ user-plugin shim under `~/.hermes/plugins/memory-firewall/` so Hermes versions
 whose `plugins enable` command discovers only directory plugins can still enable
 the installed package. The shim delegates to `memory_firewall.hermes_plugin`;
 runtime logic and diagnostics stay in the package.
+
+MF-13 adds `memory-firewall hermes observations --limit N --json`. The command
+loads local Hermes diagnostics and prints redacted, newest-first observation
+summaries with risk categories and detector names. It keeps raw and proposed
+memory content out of the CLI output and remains observe-only.
 
 ## Relationship To Agent Memory Contracts
 

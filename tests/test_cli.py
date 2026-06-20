@@ -17,8 +17,9 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["package"] == "memory-firewall"
-    assert payload["schema_version"] == "mf-12"
+    assert payload["schema_version"] == "mf-13"
     assert payload["hermes_status_schema"]["title"] == "HermesStatus"
+    assert payload["hermes_observations_schema"]["title"] == "HermesObservations"
 
 
 def test_adapter_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
@@ -126,6 +127,14 @@ def test_hermes_status_schema_command_prints_json(capsys) -> None:  # type: igno
     assert payload["title"] == "HermesStatus"
     assert payload["properties"]["observe_only"]["const"] is True
     assert payload["properties"]["production_enforcement"]["const"] is False
+
+
+def test_hermes_observations_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "hermes-observations"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "HermesObservations"
+    assert payload["properties"]["raw_content_included"]["const"] is False
 
 
 def test_hermes_install_plugin_json_command(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]

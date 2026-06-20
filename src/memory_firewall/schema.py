@@ -39,7 +39,7 @@ from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-12"
+SCHEMA_VERSION = "mf-13"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -1512,7 +1512,7 @@ def hermes_status_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-status.mf-12.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-status.mf-13.json",
         "title": "HermesStatus",
         "type": "object",
         "additionalProperties": False,
@@ -1554,6 +1554,102 @@ def hermes_status_schema() -> dict[str, Any]:
     }
 
 
+def _hermes_observation_summary_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "integration_version",
+            "row_number",
+            "recorded_at",
+            "hook_name",
+            "tool_name",
+            "mode",
+            "blocked_by_firewall",
+            "event_id",
+            "operation",
+            "source_authority",
+            "target_namespace",
+            "level",
+            "highest_disposition",
+            "finding_count",
+            "contradiction_count",
+            "risk_categories",
+            "detector_names",
+        ],
+        "properties": {
+            "integration_version": {"const": HERMES_INTEGRATION_VERSION},
+            "row_number": {"type": "integer", "minimum": 1},
+            "recorded_at": {"type": "string", "minLength": 1},
+            "hook_name": {"type": "string", "minLength": 1},
+            "tool_name": {"type": "string", "minLength": 1},
+            "mode": {"const": HERMES_DEFAULT_MODE},
+            "blocked_by_firewall": {"type": "boolean"},
+            "event_id": {"type": "string", "minLength": 1},
+            "operation": {"type": "string", "enum": _enum_values(MemoryOperation)},
+            "source_authority": {
+                "type": "string",
+                "enum": _enum_values(SourceAuthority),
+            },
+            "target_namespace": {"type": "string", "minLength": 1},
+            "level": {"type": "string", "enum": _enum_values(ScanEventLevel)},
+            "highest_disposition": {
+                "type": "string",
+                "enum": _enum_values(RecommendedDisposition),
+            },
+            "finding_count": {"type": "integer", "minimum": 0},
+            "contradiction_count": {"type": "integer", "minimum": 0},
+            "risk_categories": {
+                "type": "array",
+                "items": {"type": "string", "enum": _enum_values(RiskCategory)},
+            },
+            "detector_names": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+            },
+        },
+    }
+
+
+def hermes_observations_schema() -> dict[str, Any]:
+    """Return the redacted Hermes observations list JSON schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-observations.mf-13.json",
+        "title": "HermesObservations",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "integration_version",
+            "state_dir",
+            "limit",
+            "total_observations",
+            "returned_observations",
+            "observations",
+            "mode",
+            "observe_only",
+            "production_enforcement",
+            "raw_content_included",
+        ],
+        "properties": {
+            "integration_version": {"const": HERMES_INTEGRATION_VERSION},
+            "state_dir": {"type": "string", "minLength": 1},
+            "limit": {"type": "integer", "minimum": 1},
+            "total_observations": {"type": "integer", "minimum": 0},
+            "returned_observations": {"type": "integer", "minimum": 0},
+            "observations": {
+                "type": "array",
+                "items": _hermes_observation_summary_schema(),
+            },
+            "mode": {"const": HERMES_DEFAULT_MODE},
+            "observe_only": {"const": True},
+            "production_enforcement": {"const": False},
+            "raw_content_included": {"const": False},
+        },
+    }
+
+
 def schema_bundle() -> dict[str, Any]:
     """Return the complete public contract bundle."""
 
@@ -1579,6 +1675,7 @@ def schema_bundle() -> dict[str, Any]:
         "report_result_schema": report_result_schema(),
         "redacted_report_export_schema": redacted_report_export_schema(),
         "hermes_status_schema": hermes_status_schema(),
+        "hermes_observations_schema": hermes_observations_schema(),
         "default_detector_pack": default_detector_pack().to_dict(),
         "risk_taxonomy": [item.to_dict() for item in risk_taxonomy()],
         "claim_budget": claim_budget().to_dict(),
