@@ -6,6 +6,7 @@ from typing import Any
 
 from .adapters import AdapterCapability
 from .claim_budget import claim_budget
+from .detectors import DETECTOR_PACK_NAME, DETECTOR_PACK_VERSION, default_detector_pack
 from .models import (
     EvidenceField,
     MAX_METADATA_ENTRIES,
@@ -13,6 +14,7 @@ from .models import (
     MAX_METADATA_STRING_CHARS,
     MAX_TEXT_FIELD_CHARS,
     MemoryOperation,
+    RFC3339_TIMESTAMP_PATTERN,
     RecommendedDisposition,
     RiskCategory,
     RiskSeverity,
@@ -22,7 +24,7 @@ from .models import (
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-03"
+SCHEMA_VERSION = "mf-04"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -63,7 +65,7 @@ def event_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/memory-event.mf-03.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/memory-event.mf-04.json",
         "title": "MemoryEvent",
         "type": "object",
         "additionalProperties": False,
@@ -85,7 +87,9 @@ def event_schema() -> dict[str, Any]:
             "event_id": {"type": "string", "minLength": 1, "maxLength": 96},
             "timestamp": {
                 "type": "string",
-                "description": "RFC 3339 / ISO 8601 timestamp supplied by the adapter.",
+                "description": "RFC 3339 timestamp supplied by the adapter.",
+                "format": "date-time",
+                "pattern": RFC3339_TIMESTAMP_PATTERN,
                 "minLength": 1,
                 "maxLength": 16384,
             },
@@ -118,11 +122,11 @@ def event_schema() -> dict[str, Any]:
 
 
 def evidence_span_schema() -> dict[str, Any]:
-    """Return the MF-03 structured evidence span JSON schema."""
+    """Return the structured evidence span JSON schema."""
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/evidence-span.mf-03.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/evidence-span.mf-04.json",
         "title": "EvidenceSpan",
         "type": "object",
         "additionalProperties": False,
@@ -148,12 +152,38 @@ def evidence_span_schema() -> dict[str, Any]:
     }
 
 
+def _policy_recommendation_payload_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "finding_id",
+            "recommended_disposition",
+            "reason_codes",
+            "policy_version",
+        ],
+        "properties": {
+            "finding_id": {"type": "string", "minLength": 1},
+            "recommended_disposition": {
+                "type": "string",
+                "enum": _enum_values(RecommendedDisposition),
+            },
+            "reason_codes": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+            },
+            "policy_version": {"const": "mf-03"},
+        },
+    }
+
+
 def finding_schema() -> dict[str, Any]:
     """Return the canonical MemoryFinding JSON schema."""
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/memory-finding.mf-03.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/memory-finding.mf-04.json",
         "title": "MemoryFinding",
         "type": "object",
         "additionalProperties": False,
@@ -194,7 +224,7 @@ def adapter_capability_report_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-capability-report.mf-03.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-capability-report.mf-04.json",
         "title": "AdapterCapabilityReport",
         "type": "object",
         "additionalProperties": False,
@@ -227,11 +257,11 @@ def adapter_capability_report_schema() -> dict[str, Any]:
 
 
 def policy_schema() -> dict[str, Any]:
-    """Return the MF-03 deterministic policy JSON schema."""
+    """Return the deterministic policy JSON schema."""
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/policy.mf-03.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/policy.mf-04.json",
         "title": "PolicyContract",
         "type": "object",
         "additionalProperties": False,
@@ -281,28 +311,56 @@ def policy_schema() -> dict[str, Any]:
                     "metadata": _metadata_schema(),
                 },
             },
-            "recommendation_schema": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": [
-                    "finding_id",
-                    "recommended_disposition",
-                    "reason_codes",
-                    "policy_version",
-                ],
-                "properties": {
-                    "finding_id": {"type": "string", "minLength": 1},
-                    "recommended_disposition": {
-                        "type": "string",
-                        "enum": _enum_values(RecommendedDisposition),
-                    },
-                    "reason_codes": {
-                        "type": "array",
-                        "minItems": 1,
-                        "items": {"type": "string", "minLength": 1},
-                    },
-                    "policy_version": {"const": "mf-03"},
-                },
+            "recommendation_schema": _policy_recommendation_payload_schema(),
+        },
+    }
+
+
+def detector_pack_schema() -> dict[str, Any]:
+    """Return the MF-04 detector pack metadata schema."""
+
+    built_in_detector_definitions = [
+        definition.to_dict() for definition in default_detector_pack().definitions
+    ]
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/detector-pack.mf-04.json",
+        "title": "DetectorPack",
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["name", "version", "definitions"],
+        "properties": {
+            "name": {"const": DETECTOR_PACK_NAME},
+            "version": {"const": DETECTOR_PACK_VERSION},
+            "definitions": {"const": built_in_detector_definitions},
+        },
+    }
+
+
+def detector_result_schema() -> dict[str, Any]:
+    """Return the MF-04 detector run result schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/detector-result.mf-04.json",
+        "title": "DetectorResult",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "event_id",
+            "pack_name",
+            "pack_version",
+            "findings",
+            "policy_recommendations",
+        ],
+        "properties": {
+            "event_id": {"type": "string", "minLength": 1},
+            "pack_name": {"const": DETECTOR_PACK_NAME},
+            "pack_version": {"const": DETECTOR_PACK_VERSION},
+            "findings": {"type": "array", "items": finding_schema()},
+            "policy_recommendations": {
+                "type": "array",
+                "items": _policy_recommendation_payload_schema(),
             },
         },
     }
@@ -320,6 +378,9 @@ def schema_bundle() -> dict[str, Any]:
         "finding_schema": finding_schema(),
         "adapter_capability_report_schema": adapter_capability_report_schema(),
         "policy_schema": policy_schema(),
+        "detector_pack_schema": detector_pack_schema(),
+        "detector_result_schema": detector_result_schema(),
+        "default_detector_pack": default_detector_pack().to_dict(),
         "risk_taxonomy": [item.to_dict() for item in risk_taxonomy()],
         "claim_budget": claim_budget().to_dict(),
     }

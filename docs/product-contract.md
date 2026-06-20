@@ -1,7 +1,8 @@
 # Memory Firewall Product Contract
 
-MF-03 freezes the product surface before detectors and real framework adapters
-are added.
+MF-04 adds deterministic local detectors over supplied `MemoryEvent` JSON while
+keeping scanner, adapter, quarantine, trusted-read, and enforcement claims out
+of scope.
 
 ## Category Line
 
@@ -18,32 +19,37 @@ agent-memory-contracts
     Public semantic trust kernel and conformance layer
 
 memory-firewall
-    Public contract, conformance probe, and CLI shell for the future
-    scanner/demo/reference guardrail
+    Public contract, detector pack, conformance probe, and CLI shell for the
+    future inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-03 Allows
+## MF-04 Allows
 
 - package installation;
 - `memory-firewall doctor`;
 - machine-readable event and finding schemas;
+- machine-readable detector pack and detector result schemas;
 - deterministic event IDs for adapter-emitted `MemoryEvent` payloads;
 - deterministic finding IDs for `MemoryFinding` payloads;
-- structured evidence spans anchored to event text fields;
+- structured evidence spans anchored to event fields;
 - deterministic policy recommendation defaults;
+- deterministic heuristic detectors over one supplied `MemoryEvent` JSON
+  document;
+- policy recommendations for detector findings;
 - machine-readable adapter capability reports;
 - a conformance probe over the built-in fake adapter;
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-03 Does Not Allow
+## MF-04 Does Not Allow
 
 - real memory scanning claims;
-- detector claims;
+- claims that detectors prove objective truth, adversarial intent, or universal
+  poisoning detection;
 - quarantine claims;
 - trusted-read claims;
 - real framework adapter claims;
@@ -53,7 +59,7 @@ private orchestration layer
 
 ## Operation Vocabulary
 
-The MF-03 `operation` enum is contract vocabulary for adapter/event producers:
+The `operation` enum is contract vocabulary for adapter/event producers:
 
 - `create`
 - `update`
@@ -61,7 +67,7 @@ The MF-03 `operation` enum is contract vocabulary for adapter/event producers:
 - `delete`
 - `import`
 
-These values describe the proposed memory operation. They do not mean MF-03 can
+These values describe the proposed memory operation. They do not mean MF-04 can
 execute, block, import from a framework, or enforce that operation.
 
 ## Canonical Event Surface
@@ -81,7 +87,7 @@ The canonical `MemoryEvent` contains:
 - `target_namespace`
 - `metadata`
 
-MF-03 also defines deterministic event IDs. The id is derived from the
+Memory Firewall also defines deterministic event IDs. The id is derived from the
 canonical event material excluding `event_id`, using a stable JSON encoding and
 SHA-256 digest prefix. This gives adapters a reproducible id surface without
 claiming semantic truth or deduplication across incompatible memory systems.
@@ -102,7 +108,7 @@ The canonical `MemoryFinding` contains:
 - `recommended_disposition`
 - `limitations`
 
-MF-03 defines deterministic finding IDs. The id is derived from canonical
+Memory Firewall defines deterministic finding IDs. The id is derived from canonical
 finding material excluding `finding_id`.
 
 The structured `EvidenceSpan` contains:
@@ -114,11 +120,13 @@ The structured `EvidenceSpan` contains:
 
 Evidence spans can be validated against a supplied `MemoryEvent`; the quoted
 text must exactly match the referenced event field and character offsets.
-This proves local anchoring only. It does not prove the quoted text is true.
+For secret-like findings, the span intentionally anchors only a non-secret
+label or prefix rather than reproducing the complete matched secret. This proves
+local anchoring only. It does not prove the quoted text is true.
 
 ## Policy Surface
 
-MF-03 defines deterministic policy recommendation defaults:
+Memory Firewall defines deterministic policy recommendation defaults:
 
 - severity order: `informational`, `suspicious`, `high_impact`;
 - disposition order: `pass`, `warn`, `review`, `quarantine`;
@@ -127,8 +135,29 @@ MF-03 defines deterministic policy recommendation defaults:
   `quarantine`;
 - a finding's own recommended disposition can only make the result stricter.
 
-Policy output is an inspectable recommendation. It is not detector execution,
-automatic approval, quarantine storage, or enforcement.
+Policy output is an inspectable recommendation. It is not automatic approval,
+quarantine storage, or enforcement.
+
+## Detector Surface
+
+MF-04 ships a built-in deterministic detector pack. The pack runs only over a
+supplied `MemoryEvent`; it does not scan a store, watch a directory, connect to
+a framework, call an LLM, use the network, or inspect files beyond an explicitly
+provided event JSON path.
+
+The built-in detector pack currently includes heuristics for:
+
+- provenance gaps;
+- instruction-like persistence patterns;
+- authority, ownership, approval, access, or payment changes;
+- stale or temporal state;
+- scope and privacy-sensitive content;
+- secret-like or credential-like content;
+- repeated sentence-like content.
+
+Detector findings must include explicit limitations and anchored evidence spans.
+They are review signals. They do not prove that text is false, malicious,
+poisoned, or safe.
 
 ## Adapter Capability Surface
 
@@ -172,7 +201,7 @@ Disposition describes the recommended handling:
 - `review`
 - `quarantine`
 
-`quarantine` is only an advisory disposition value in MF-03. This sprint does
+`quarantine` is only an advisory disposition value in MF-04. This sprint does
 not implement quarantine storage or enforcement.
 
 Use `poisoned` only for attack demos or confirmed adversarial cases. Normal

@@ -6,15 +6,20 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any, TextIO
 
 from .adapters import demo_memory_adapter
 from .claim_budget import claim_budget
 from .conformance import run_adapter_conformance
+from .detectors import default_detector_pack, run_detectors
 from .doctor import doctor_report
+from .models import MemoryEvent
 from .policy import DISPOSITION_ORDER, SEVERITY_ORDER, PolicyConfig
 from .schema import (
     adapter_capability_report_schema,
+    detector_pack_schema,
+    detector_result_schema,
     evidence_span_schema,
     event_schema,
     finding_schema,
@@ -45,7 +50,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     schema_parser.add_argument(
         "name",
-        choices=("event", "evidence-span", "finding", "adapter", "policy", "bundle"),
+        choices=(
+            "event",
+            "evidence-span",
+            "finding",
+            "adapter",
+            "policy",
+            "detector-pack",
+            "detector-result",
+            "bundle",
+        ),
         help="Schema to print.",
     )
 
@@ -59,6 +73,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "policy", help="Print deterministic policy defaults."
     )
     policy_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    detect_parser = subparsers.add_parser(
+        "detect", help="Run built-in deterministic detectors over one event JSON."
+    )
+    detect_parser.add_argument(
+        "--event",
+        default="-",
+        help="Path to MemoryEvent JSON. Use '-' to read from stdin.",
+    )
+    detect_parser.add_argument("--json", action="store_true", dest="as_json")
 
     conformance_parser = subparsers.add_parser(
         "conformance", help="Run adapter conformance probes."
@@ -96,6 +120,10 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = adapter_capability_report_schema()
     elif name == "policy":
         payload = policy_schema()
+    elif name == "detector-pack":
+        payload = detector_pack_schema()
+    elif name == "detector-result":
+        payload = detector_result_schema()
     else:
         payload = schema_bundle()
     _print_json(payload, stdout)
@@ -160,6 +188,38 @@ def _run_policy(as_json: bool, stdout: TextIO) -> int:
     return 0
 
 
+def _load_event_json(event_path: str, stdin: TextIO) -> dict[str, Any]:
+    if event_path == "-":
+        raw = stdin.read()
+    else:
+        raw = Path(event_path).read_text(encoding="utf-8")
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise TypeError("event JSON must be an object")
+    return payload
+
+
+def _run_detect(event_path: str, as_json: bool, stdin: TextIO, stdout: TextIO) -> int:
+    event = MemoryEvent.from_dict(_load_event_json(event_path, stdin))
+    result = run_detectors(event)
+    if as_json:
+        _print_json(result.to_dict(), stdout)
+    else:
+        print(
+            f"{default_detector_pack().name} {default_detector_pack().version}: "
+            f"{len(result.findings)} finding(s)",
+            file=stdout,
+        )
+        for finding in result.findings:
+            print(
+                f"- {finding.risk_category.value}: "
+                f"{finding.recommended_disposition.value}: "
+                f"{finding.explanation}",
+                file=stdout,
+            )
+    return 0
+
+
 def _run_conformance(adapter: str, as_json: bool, stdout: TextIO) -> int:
     if adapter != "demo":
         raise ValueError(f"unsupported adapter: {adapter}")
@@ -193,6 +253,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_claims(bool(args.as_json), sys.stdout)
     if args.command == "policy":
         return _run_policy(bool(args.as_json), sys.stdout)
+    if args.command == "detect":
+        return _run_detect(str(args.event), bool(args.as_json), sys.stdin, sys.stdout)
     if args.command == "conformance":
         return _run_conformance(str(args.adapter), bool(args.as_json), sys.stdout)
     parser.error(f"unknown command: {args.command}")
