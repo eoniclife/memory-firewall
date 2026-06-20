@@ -54,12 +54,15 @@ private orchestration layer
 - finite scan over caller-supplied normalized `MemoryEvent` JSONL files;
 - stdin watch over caller-supplied normalized `MemoryEvent` JSONL streams;
 - scan-local rolling assertion context for contradiction analysis;
+- fixed-cap scan-local context containing only clean, review-eligible
+  assertions;
 - structured scan issues for invalid JSONL lines without echoing raw line
   content;
 - deterministic scan/watch exit codes:
   - `0`: completed with no invalid lines and no high-risk events;
   - `1`: completed with at least one high-risk event;
   - `2`: one or more invalid input lines were found;
+  - `130`: watch was interrupted before clean EOF;
 - machine-readable adapter capability reports;
 - a conformance probe over the built-in fake adapter;
 - frozen risk taxonomy;
@@ -239,11 +242,13 @@ do not connect to a live framework or memory store. The scan/watch layer
 composes existing detector, policy, and state-analysis surfaces. It does not
 create a separate judgment path.
 
-Finite scans keep only scan-local assertion context needed for contradiction
-analysis. That context is not trusted state, is not written to disk, and is not
-a reducer decision. JSON output includes event records unless `--summary-only`
-is used. Invalid input lines emit structured issues with generic error messages
-and no raw line echo.
+Finite scans keep only bounded scan-local assertion context needed for
+contradiction analysis. Only clean, review-eligible events can seed that
+context; low-authority or high-risk candidates are not fed back as future
+state. That context is not trusted state, is not written to disk, and is not a
+reducer decision. JSON output includes event records unless `--summary-only` is
+used. Invalid input lines emit structured issues with generic error messages and
+no raw line echo.
 
 Watch mode is stdin-only in MF-06. It emits one terminal or JSONL result per
 input line and handles `KeyboardInterrupt` without a traceback.

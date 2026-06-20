@@ -9,6 +9,7 @@ from memory_firewall import (
     MemoryOperation,
     SCAN_EXIT_CLEAN,
     SCAN_EXIT_INVALID_INPUT,
+    SCAN_EXIT_INTERRUPTED,
     SCAN_EXIT_REVIEW_REQUIRED,
     SCAN_VERSION,
     SourceAuthority,
@@ -101,6 +102,31 @@ def test_scan_jsonl_invalid_lines_are_structured_without_raw_secret_echo() -> No
     Draft202012Validator(scan_result_schema()).validate(result.to_dict())
 
 
+def test_scan_jsonl_untrusted_candidates_do_not_seed_future_contradictions() -> None:
+    first = _event(
+        index=1,
+        authority=SourceAuthority.UNTRUSTED,
+        state_object="Alice",
+        content="Untrusted note says Alice.",
+        subject="tenant:demo:finance:payout",
+    )
+    second = _event(
+        index=2,
+        authority=SourceAuthority.UNTRUSTED,
+        state_object="Mallory",
+        content="Untrusted note says Mallory.",
+        subject="tenant:demo:finance:payout",
+    )
+
+    result = scan_jsonl_events(_jsonl(first, second), source="events.jsonl")
+
+    assert result.summary.blocked_low_authority_contradictions == 0
+    assert result.events[1].state_analysis.contradictions == ()
+    assert result.events[1].state_analysis.trusted_state_action != (
+        TrustedStateAction.BLOCKED_LOW_AUTHORITY_CONTRADICTION
+    )
+
+
 def test_scan_jsonl_summary_only_is_reproducible_for_1000_events() -> None:
     lines = _jsonl(*(_event(index=index) for index in range(1000)))
 
@@ -134,6 +160,6 @@ def test_watch_stdin_events_handles_keyboard_interrupt_cleanly() -> None:
     )
 
     lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
-    assert exit_code == SCAN_EXIT_CLEAN
+    assert exit_code == SCAN_EXIT_INTERRUPTED
     assert lines[0]["record_type"] == "event"
     assert lines[-1]["record_type"] == "interrupted"

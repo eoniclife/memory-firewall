@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import OrderedDict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
@@ -17,14 +18,24 @@ from .analysis import (
     analyze_memory_state,
 )
 from .detectors import DetectorResult, run_detectors
-from .models import MemoryEvent, RecommendedDisposition
+from .models import MemoryEvent, RecommendedDisposition, SourceAuthority
 from .policy import max_disposition
 
 SCAN_VERSION = "mf-06"
 SCAN_ISSUE_ID_PREFIX = "mfissue_v1_"
+DEFAULT_SCAN_CONTEXT_ASSERTIONS = 1024
 SCAN_EXIT_CLEAN = 0
 SCAN_EXIT_REVIEW_REQUIRED = 1
 SCAN_EXIT_INVALID_INPUT = 2
+SCAN_EXIT_INTERRUPTED = 130
+_SCAN_CONTEXT_AUTHORITIES = frozenset(
+    {
+        SourceAuthority.TOOL_OBSERVED,
+        SourceAuthority.SYSTEM,
+        SourceAuthority.SIGNED_RECORD,
+        SourceAuthority.HUMAN_APPROVED,
+    }
+)
 
 
 class ScanEventLevel(str, Enum):
@@ -324,12 +335,17 @@ def iter_scan_records(
     *,
     source: str = "<stream>",
     existing_assertions: tuple[MemoryStateAssertion, ...] = (),
+    max_context_assertions: int = DEFAULT_SCAN_CONTEXT_ASSERTIONS,
 ) -> Iterable[ScanRecord]:
     """Yield scan records while reading a JSONL stream line by line."""
 
-    assertions_by_key = {
-        assertion.conflict_key: assertion for assertion in existing_assertions
-    }
+    if max_context_assertions < 0:
+        raise ValueError("max_context_assertions must be non-negative")
+    assertions_by_key: OrderedDict[tuple[str, str], MemoryStateAssertion] = OrderedDict()
+    for assertion in existing_assertions:
+        assertions_by_key[assertion.conflict_key] = assertion
+        while len(assertions_by_key) > max_context_assertions:
+            assertions_by_key.popitem(last=False)
     for line_number, raw_line in enumerate(lines, start=1):
         line = raw_line.rstrip("\r\n")
         try:
@@ -342,10 +358,24 @@ def iter_scan_records(
         except Exception as exc:
             yield _generic_issue(line_number, source, exc)
             continue
-        assertions_by_key[result.state_analysis.assertion.conflict_key] = (
-            result.state_analysis.assertion
-        )
+        if max_context_assertions and _can_seed_scan_context(result):
+            assertions_by_key[result.state_analysis.assertion.conflict_key] = (
+                result.state_analysis.assertion
+            )
+            assertions_by_key.move_to_end(result.state_analysis.assertion.conflict_key)
+            while len(assertions_by_key) > max_context_assertions:
+                assertions_by_key.popitem(last=False)
         yield result
+
+
+def _can_seed_scan_context(result: ScanEventResult) -> bool:
+    assertion = result.state_analysis.assertion
+    return (
+        result.level == ScanEventLevel.PASS
+        and result.state_analysis.trusted_state_action
+        == TrustedStateAction.CANDIDATE_ONLY
+        and assertion.source_authority in _SCAN_CONTEXT_AUTHORITIES
+    )
 
 
 def scan_jsonl_events(
@@ -354,6 +384,7 @@ def scan_jsonl_events(
     source: str = "<stream>",
     existing_assertions: tuple[MemoryStateAssertion, ...] = (),
     include_events: bool = True,
+    max_context_assertions: int = DEFAULT_SCAN_CONTEXT_ASSERTIONS,
 ) -> ScanResult:
     """Scan a finite JSONL stream of MemoryEvent objects."""
 
@@ -373,6 +404,7 @@ def scan_jsonl_events(
         lines,
         source=source,
         existing_assertions=existing_assertions,
+        max_context_assertions=max_context_assertions,
     ):
         total_lines += 1
         if isinstance(record, ScanIssue):
@@ -419,7 +451,8 @@ def scan_jsonl_events(
         metadata={
             "line_oriented": True,
             "input_contract": "MemoryEvent JSONL",
-            "state_scope": "scan_local_analysis_context_only",
+            "state_scope": "bounded_review_eligible_scan_context_only",
+            "max_context_assertions": max_context_assertions,
         },
     )
 
@@ -450,12 +483,17 @@ def _record_json_line(record: ScanRecord) -> dict[str, Any]:
 
 def _print_watch_record(record: ScanRecord, stdout: TextIO, *, as_json: bool) -> None:
     if as_json:
-        print(json.dumps(_record_json_line(record), sort_keys=True), file=stdout)
+        print(
+            json.dumps(_record_json_line(record), sort_keys=True),
+            file=stdout,
+            flush=True,
+        )
         return
     if isinstance(record, ScanIssue):
         print(
             f"INVALID line={record.line_number} issue={record.issue_id}",
             file=stdout,
+            flush=True,
         )
         return
     level = record.level.value.replace("_", "-").upper()
@@ -464,6 +502,7 @@ def _print_watch_record(record: ScanRecord, stdout: TextIO, *, as_json: bool) ->
         f"event={record.event_id} findings={record.finding_count} "
         f"disposition={record.highest_disposition.value}",
         file=stdout,
+        flush=True,
     )
 
 
@@ -474,6 +513,7 @@ def watch_stdin_events(
     as_json: bool = True,
     source: str = "<stdin>",
     existing_assertions: tuple[MemoryStateAssertion, ...] = (),
+    max_context_assertions: int = DEFAULT_SCAN_CONTEXT_ASSERTIONS,
 ) -> int:
     """Watch a stdin-like JSONL stream and emit one result per input line."""
 
@@ -483,6 +523,7 @@ def watch_stdin_events(
             lines,
             source=source,
             existing_assertions=existing_assertions,
+            max_context_assertions=max_context_assertions,
         ):
             _print_watch_record(record, stdout, as_json=as_json)
             if isinstance(record, ScanIssue):
@@ -492,8 +533,8 @@ def watch_stdin_events(
     except KeyboardInterrupt:
         payload = {"scan_version": SCAN_VERSION, "record_type": "interrupted"}
         if as_json:
-            print(json.dumps(payload, sort_keys=True), file=stdout)
+            print(json.dumps(payload, sort_keys=True), file=stdout, flush=True)
         else:
-            print("INTERRUPTED", file=stdout)
-        return exit_code
+            print("INTERRUPTED", file=stdout, flush=True)
+        return SCAN_EXIT_INTERRUPTED
     return exit_code

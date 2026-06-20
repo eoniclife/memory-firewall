@@ -79,10 +79,12 @@ and explaining integrity risks in persistent agent memory. MF-06 still does not
 connect to real stores. It can run deterministic heuristic detectors and
 state-analysis over caller-supplied normalized `MemoryEvent` JSON or JSONL
 streams, carry scan-local assertion context to surface contradictions, and emit
-structured PASS/WARN/HIGH-RISK output. Those findings and analysis results are
-signals for reducer review, not proof of objective truth, adversarial intent,
-or universal poisoning detection. Enforcement claims are allowed only where
-Memory Firewall controls the relevant read/write chokepoint.
+structured PASS/WARN/HIGH-RISK output. Scan-local context is bounded and seeded
+only by clean, review-eligible events; it is not trusted state. Those findings
+and analysis results are signals for reducer review, not proof of objective
+truth, adversarial intent, or universal poisoning detection. Enforcement claims
+are allowed only where Memory Firewall controls the relevant read/write
+chokepoint.
 
 ## Relationship To Agent Memory Contracts
 
