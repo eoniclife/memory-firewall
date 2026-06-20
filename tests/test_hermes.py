@@ -445,6 +445,46 @@ def test_hermes_checkup_accepts_inline_enabled_config_hint(tmp_path) -> None:  #
     assert payload["overall_status"] == "ready"
 
 
+def test_hermes_checkup_rejects_malformed_enabled_scalar_then_list(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "hermes"
+    state_dir = tmp_path / "state"
+    install_hermes_plugin_shim(hermes_home=home)
+    default_hermes_config_path(home).write_text(
+        "plugins:\n  enabled: []\n  - memory-firewall\n",
+        encoding="utf-8",
+    )
+
+    payload = check_hermes_setup(
+        hermes_home=home,
+        state_dir=state_dir,
+        write_sample=True,
+    ).to_dict()
+
+    Draft202012Validator(hermes_checkup_schema()).validate(payload)
+    assert payload["config_mentions_plugin"] is False
+    assert payload["overall_status"] == "needs_setup"
+
+
+def test_hermes_checkup_rejects_malformed_enabled_string_then_list(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "hermes"
+    state_dir = tmp_path / "state"
+    install_hermes_plugin_shim(hermes_home=home)
+    default_hermes_config_path(home).write_text(
+        "plugins:\n  enabled: disabled\n  - memory-firewall\n",
+        encoding="utf-8",
+    )
+
+    payload = check_hermes_setup(
+        hermes_home=home,
+        state_dir=state_dir,
+        write_sample=True,
+    ).to_dict()
+
+    Draft202012Validator(hermes_checkup_schema()).validate(payload)
+    assert payload["config_mentions_plugin"] is False
+    assert payload["overall_status"] == "needs_setup"
+
+
 def test_hermes_checkup_reports_installed_but_empty_setup(tmp_path) -> None:  # type: ignore[no-untyped-def]
     home = tmp_path / "hermes"
     state_dir = tmp_path / "state"
@@ -465,6 +505,27 @@ def test_hermes_checkup_reports_installed_but_empty_setup(tmp_path) -> None:  # 
     assert payload["status"]["total_observations"] == 0
     assert any("--write-sample" in step for step in payload["next_steps"])
     assert any(f"--hermes-home {home}" in step for step in payload["next_steps"])
+
+
+def test_hermes_checkup_accepts_hermes_cli_enabled_list_style(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "hermes"
+    state_dir = tmp_path / "state"
+    install_hermes_plugin_shim(hermes_home=home)
+    default_hermes_config_path(home).write_text(
+        "plugins:\n  enabled:\n  - memory-firewall\n",
+        encoding="utf-8",
+    )
+
+    payload = check_hermes_setup(
+        hermes_home=home,
+        state_dir=state_dir,
+        write_sample=True,
+    ).to_dict()
+
+    Draft202012Validator(hermes_checkup_schema()).validate(payload)
+    assert payload["config_mentions_plugin"] is True
+    assert payload["overall_status"] == "ready"
+    assert payload["next_steps"] == []
 
 
 def test_hermes_checkup_reports_stale_shim_repair_command(tmp_path) -> None:  # type: ignore[no-untyped-def]
