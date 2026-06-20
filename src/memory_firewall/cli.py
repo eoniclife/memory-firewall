@@ -16,7 +16,11 @@ from .conformance import run_adapter_conformance
 from .detectors import default_detector_pack, run_detectors
 from .demo import run_poison_demo
 from .doctor import doctor_report
-from .hermes import install_hermes_plugin_shim, summarize_hermes_observations
+from .hermes import (
+    install_hermes_plugin_shim,
+    recent_hermes_observations,
+    summarize_hermes_observations,
+)
 from .models import MemoryEvent
 from .policy import DISPOSITION_ORDER, SEVERITY_ORDER, PolicyConfig
 from .proxy import ProxyMode, run_reference_proxy
@@ -44,6 +48,7 @@ from .schema import (
     evidence_span_schema,
     event_schema,
     finding_schema,
+    hermes_observations_schema,
     hermes_status_schema,
     override_receipt_schema,
     policy_schema,
@@ -63,6 +68,16 @@ from .version import __version__
 
 def _print_json(payload: Any, stdout: TextIO) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True), file=stdout)
+
+
+def _positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return parsed
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -100,6 +115,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "report-result",
             "redacted-report-export",
             "hermes-status",
+            "hermes-observations",
             "bundle",
         ),
         help="Schema to print.",
@@ -345,6 +361,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Directory containing Hermes Memory Firewall JSONL diagnostics.",
     )
     hermes_status_parser.add_argument("--json", action="store_true", dest="as_json")
+    hermes_observations_parser = hermes_subparsers.add_parser(
+        "observations",
+        help="Show recent redacted Hermes Memory Firewall observations.",
+    )
+    hermes_observations_parser.add_argument(
+        "--state-dir",
+        help="Directory containing Hermes Memory Firewall JSONL diagnostics.",
+    )
+    hermes_observations_parser.add_argument(
+        "--limit",
+        type=_positive_int,
+        default=20,
+        help="Maximum number of recent observations to show.",
+    )
+    hermes_observations_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="as_json",
+    )
     hermes_install_parser = hermes_subparsers.add_parser(
         "install-plugin",
         help="Install the Hermes user-plugin shim for current Hermes CLI discovery.",
@@ -412,6 +447,8 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = redacted_report_export_schema()
     elif name == "hermes-status":
         payload = hermes_status_schema()
+    elif name == "hermes-observations":
+        payload = hermes_observations_schema()
     else:
         payload = schema_bundle()
     _print_json(payload, stdout)
@@ -839,6 +876,44 @@ def _run_hermes_status(
     return 0 if status.high_risk_observations == 0 else 1
 
 
+def _run_hermes_observations(
+    state_dir: str | None,
+    limit: int,
+    as_json: bool,
+    stdout: TextIO,
+) -> int:
+    result = recent_hermes_observations(state_dir=state_dir, limit=limit)
+    if as_json:
+        _print_json(result.to_dict(), stdout)
+    else:
+        print(f"{result.integration_version}: Hermes observations", file=stdout)
+        print(f"- state dir: {result.state_dir}", file=stdout)
+        print(f"- total observations: {result.total_observations}", file=stdout)
+        print(f"- returned: {result.returned_observations}", file=stdout)
+        print("- observe-only: true", file=stdout)
+        for item in result.observations:
+            categories = ", ".join(item.risk_categories) or "none"
+            detectors = ", ".join(item.detector_names) or "none"
+            print(
+                f"- #{item.row_number} {item.recorded_at} "
+                f"{item.level}/{item.highest_disposition} "
+                f"{item.tool_name} -> {item.target_namespace}",
+                file=stdout,
+            )
+            print(f"  handle: {item.event_ref}", file=stdout)
+            print(
+                f"  findings: {item.finding_count}; "
+                f"contradictions: {item.contradiction_count}; "
+                f"risks: {categories}",
+                file=stdout,
+            )
+            print(f"  detectors: {detectors}", file=stdout)
+    has_high_risk = any(
+        item.level == "high_risk" for item in result.observations
+    )
+    return 1 if has_high_risk else 0
+
+
 def _run_hermes_install_plugin(
     hermes_home: str | None,
     force: bool,
@@ -984,6 +1059,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             state_dir = None if args.state_dir is None else str(args.state_dir)
             return _run_hermes_status(
                 state_dir,
+                bool(args.as_json),
+                sys.stdout,
+            )
+        if hermes_command == "observations":
+            state_dir = None if args.state_dir is None else str(args.state_dir)
+            return _run_hermes_observations(
+                state_dir,
+                int(args.limit),
                 bool(args.as_json),
                 sys.stdout,
             )
