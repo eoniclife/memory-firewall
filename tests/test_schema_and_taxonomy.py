@@ -24,6 +24,7 @@ from memory_firewall import (
     finding_schema,
     policy_schema,
     risk_taxonomy,
+    run_detectors,
 )
 from memory_firewall.schema import schema_bundle
 
@@ -172,6 +173,8 @@ def test_event_schema_format_checker_matches_runtime_timestamp_rules() -> None:
         "2026-W25-6T14:00:00+00:00",
         "2026-06-20 14:00:00+00:00",
         "2026-06-20T14:00:00+0000",
+        "2026-02-30T14:00:00Z",
+        "2026-06-20T14:00:00Z\n",
     ):
         payload = event.to_dict()
         payload["timestamp"] = timestamp
@@ -191,6 +194,32 @@ def test_detector_pack_schema_rejects_subset_reorder_and_custom_name() -> None:
     assert list(validator.iter_errors(subset_payload))
     assert list(validator.iter_errors(reordered_payload))
     assert list(validator.iter_errors(custom_name_payload))
+
+
+def test_detector_result_schema_rejects_custom_pack_metadata() -> None:
+    event = MemoryEvent.from_adapter_payload(
+        {
+            "timestamp": "2026-06-20T14:00:00Z",
+            "actor": "agent:test",
+            "user_or_tenant_scope": "tenant:demo",
+            "source_type": SourceType.TOOL_OUTPUT.value,
+            "source_id": "tool_detector_result_schema",
+            "source_authority": SourceAuthority.TOOL_OBSERVED.value,
+            "raw_or_redacted_content": "The tool returned account owner Alice.",
+            "proposed_memory": "Account owner is Alice.",
+            "operation": MemoryOperation.UPSERT.value,
+            "target_namespace": "crm",
+            "metadata": {"fixture": "detector-result-schema"},
+        }
+    )
+    result = run_detectors(event)
+    validator = Draft202012Validator(detector_result_schema())
+
+    custom_name_payload = {**result.to_dict(), "pack_name": "custom"}
+    custom_version_payload = {**result.to_dict(), "pack_version": "custom-v1"}
+
+    assert list(validator.iter_errors(custom_name_payload))
+    assert list(validator.iter_errors(custom_version_payload))
 
 
 def test_adapter_schema_rejects_supported_and_unsupported_overlap() -> None:

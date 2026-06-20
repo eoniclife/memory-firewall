@@ -150,8 +150,12 @@ class DetectorResult:
             raise ValueError("event_id must not be empty")
         if not self.pack_name:
             raise ValueError("pack_name must not be empty")
+        if self.pack_name != DETECTOR_PACK_NAME:
+            raise ValueError(f"pack_name must be {DETECTOR_PACK_NAME}")
         if not self.pack_version:
             raise ValueError("pack_version must not be empty")
+        if self.pack_version != DETECTOR_PACK_VERSION:
+            raise ValueError(f"pack_version must be {DETECTOR_PACK_VERSION}")
         if len(self.findings) != len(self.policy_recommendations):
             raise ValueError("policy_recommendations must match findings")
         finding_ids = {finding.finding_id for finding in self.findings}
@@ -256,7 +260,15 @@ def _secret_value_ranges(text: str) -> tuple[tuple[int, int], ...]:
     for pattern in (_OPENAI_KEY_PATTERN, _CARD_LIKE_PATTERN):
         for match in pattern.finditer(text):
             ranges.append(match.span())
-    return tuple(ranges)
+    ranges.sort()
+    merged: list[tuple[int, int]] = []
+    for start, end in ranges:
+        if not merged or start > merged[-1][1]:
+            merged.append((start, end))
+            continue
+        previous_start, previous_end = merged[-1]
+        merged[-1] = (previous_start, max(previous_end, end))
+    return tuple(merged)
 
 
 def _overlaps_secret_value(
@@ -457,9 +469,14 @@ def _detect_stale_temporal_state(
             except ValueError:
                 continue
             if (event_day - mentioned_day).days >= 365:
-                date_span = EvidenceSpan(
-                    field, match.start(), match.end(), match.group(0)
+                date_span = _safe_evidence_span(
+                    field,
+                    text,
+                    match.start(),
+                    match.end(),
                 )
+                if date_span is None:
+                    continue
                 return _make_finding(
                     definition,
                     event,

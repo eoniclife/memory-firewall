@@ -179,6 +179,25 @@ Reviewer state:
   - `DetectorPack` runtime validation and the exported detector-pack schema
     require the exact default ordered detector definitions and default pack
     name.
+- Independent reviewer and native Codex requested further changes on exact head
+  `924a7dbc870a549548ef7db7df867eb77df79f07`:
+  - secret ranges had to be sorted/merged before slicing evidence spans, or a
+    later label-secret match could cause an earlier bare `sk-` key to remain in
+    a sanitized quote;
+  - stale date evidence was bypassing the secret-aware sanitizer;
+  - the exported timestamp schema still accepted impossible dates and trailing
+    newlines that runtime validation rejected;
+  - direct `DetectorResult` construction could still use schema-invalid pack
+    metadata.
+- Subsequent fix-pass changes address those findings with regression coverage:
+  - `_secret_value_ranges()` now sorts and merges recognized secret-like ranges
+    before evidence-span candidate slicing;
+  - stale date evidence routes through `_safe_evidence_span()` and skips matches
+    that are wholly inside recognized secret-like values;
+  - the shared timestamp pattern now rejects impossible calendar dates,
+    runtime/schema-incompatible compact forms, and trailing newline strings;
+  - `DetectorResult` runtime validation and schema now require the default pack
+    name and version.
 
 Additional local gates after the global evidence-span redaction regression:
 
@@ -255,5 +274,45 @@ Additional local gates after the timestamp/schema and pack-identity fix:
   - installed console script smokes for `doctor`, detector schemas, and
     `detect --event - --json`
   - installed-wheel detector output was checked for sample secret absence
+
+Additional local gates after the sorted-secret-range, stale-date, timestamp,
+and detector-result metadata fix:
+
+- focused detector/model/CLI/schema tests:
+  `UV_PROJECT_ENVIRONMENT=.venv-312 uv run --python 3.12 --extra dev pytest tests/test_detectors.py tests/test_models.py tests/test_schema_and_taxonomy.py tests/test_cli.py -q`
+  - `72` passed
+- full test suite:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev pytest -q`
+  - `92` passed
+- type checks:
+  - `UV_PROJECT_ENVIRONMENT=.venv-310 uv run --python 3.10 --extra dev mypy src tests`
+  - `UV_PROJECT_ENVIRONMENT=.venv-311 uv run --python 3.11 --extra dev mypy src tests`
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-mypy uv run --python 3.12 --extra dev mypy src tests`
+  - all reported `Success: no issues found in 20 source files`
+- bytecode smoke:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev python -m compileall -q src tests`
+- CLI/schema JSON smokes:
+  - `memory-firewall doctor --json`
+  - `memory-firewall schema bundle`
+  - `memory-firewall schema detector-pack`
+  - `memory-firewall schema detector-result`
+  - `memory-firewall policy --json`
+  - `memory-firewall conformance demo --json`
+  - `memory-firewall detect --event - --json`
+  - adversarial CLI detector output was checked for absence of the unsorted
+    `sk-` key, label-secret value, secret date wrapper, and secret date subspan
+- whitespace check:
+  `git diff --check`
+- package build and metadata:
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-full uv build --out-dir /tmp/memory-firewall-mf04-dist`
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev twine check /tmp/memory-firewall-mf04-dist/*`
+- installed-wheel smoke:
+  - installed `memory_firewall-0.1.0.dev4-py3-none-any.whl` into
+    `/tmp/memory-firewall-mf04-wheel-venv`
+  - `uv pip check --python /tmp/memory-firewall-mf04-wheel-venv/bin/python`
+  - installed console script smokes for `doctor`, detector schemas, and
+    `detect --event - --json`
+  - installed-wheel detector output was checked for adversarial unsorted-secret
+    absence
 
 CI and exact-head re-review are pending after the fix-pass push.

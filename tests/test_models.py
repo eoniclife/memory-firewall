@@ -230,6 +230,8 @@ def test_memory_event_rejects_schema_incompatible_timestamp_grammar() -> None:
         "2026-W25-6T14:00:00+00:00",
         "2026-06-20 14:00:00+00:00",
         "2026-06-20T14:00:00+0000",
+        "2026-02-30T14:00:00Z",
+        "2026-06-20T14:00:00Z\n",
     )
     for timestamp in invalid_timestamps:
         payload = _event_payload_without_id()

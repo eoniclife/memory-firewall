@@ -355,7 +355,7 @@ def detector_result_schema() -> dict[str, Any]:
         ],
         "properties": {
             "event_id": {"type": "string", "minLength": 1},
-            "pack_name": {"type": "string", "minLength": 1},
+            "pack_name": {"const": DETECTOR_PACK_NAME},
             "pack_version": {"const": DETECTOR_PACK_VERSION},
             "findings": {"type": "array", "items": finding_schema()},
             "policy_recommendations": {
