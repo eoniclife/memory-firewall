@@ -19,6 +19,45 @@ REDACTED_EXPORT_VERSION = "mf-10"
 REPORT_JSON_FILENAME = "report.json"
 REPORT_HTML_FILENAME = "index.html"
 REDACTED_EXPORT_FILENAME = "redacted-share.json"
+_REDACTED_DEMO_OUTCOME_KEYS = frozenset(
+    (
+        "naive_memory_was_poisoned",
+        "benign_memory_passed",
+        "firewall_high_risk_events",
+        "queued_items",
+        "pending_preview_items",
+        "rejected_preview_items",
+        "override_preview_items",
+        "answer_values_redacted",
+        "event_ids_redacted",
+    )
+)
+_REDACTED_PROXY_OUTCOME_KEYS = frozenset(
+    (
+        "mode",
+        "high_risk_events",
+        "queued_items",
+        "trusted_read_preview_items",
+        "suppressed_native_write_count",
+        "native_record_count",
+        "governed_context_record_count",
+        "answer_values_redacted",
+        "event_ids_redacted",
+    )
+)
+_REDACTED_EVENT_SUMMARY_KEYS = frozenset(
+    (
+        "event_label",
+        "line_number",
+        "level",
+        "highest_disposition",
+        "finding_count",
+        "contradiction_count",
+        "risk_categories",
+        "review_item_present",
+        "suppressed_native_write",
+    )
+)
 
 
 def _require_bool(value: bool, field_name: str) -> None:
@@ -34,11 +73,60 @@ def _string_tuple(value: tuple[str, ...], field_name: str) -> tuple[str, ...]:
     return value
 
 
-def _json_mapping(value: Mapping[str, Any], field_name: str) -> Mapping[str, Any]:
+def _json_mapping(value: Mapping[str, Any], field_name: str) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise TypeError(f"{field_name} must be a mapping")
     json.dumps(value, allow_nan=False, sort_keys=True)
     return dict(value)
+
+
+def _json_mapping_with_exact_keys(
+    value: Mapping[str, Any],
+    field_name: str,
+    keys: frozenset[str],
+) -> dict[str, Any]:
+    payload = _json_mapping(value, field_name)
+    actual = set(payload)
+    if actual != keys:
+        missing = sorted(keys - actual)
+        unexpected = sorted(actual - keys)
+        detail = []
+        if missing:
+            detail.append(f"missing: {', '.join(missing)}")
+        if unexpected:
+            detail.append(f"unexpected: {', '.join(unexpected)}")
+        raise ValueError(
+            f"{field_name} must match redacted schema ({'; '.join(detail)})"
+        )
+    return payload
+
+
+def _require_true(value: Any, field_name: str) -> None:
+    _require_bool(value, field_name)
+    if value is not True:
+        raise ValueError(f"{field_name} must be true")
+
+
+def _require_false(value: Any, field_name: str) -> None:
+    _require_bool(value, field_name)
+    if value is not False:
+        raise ValueError(f"{field_name} must be false")
+
+
+def _require_non_empty_tuple(
+    value: tuple[Any, ...],
+    field_name: str,
+) -> tuple[Any, ...]:
+    if isinstance(value, str) or not isinstance(value, tuple):
+        raise TypeError(f"{field_name} must be a tuple")
+    if not value:
+        raise ValueError(f"{field_name} must not be empty")
+    return value
+
+
+def _validate_redaction_flags(payload: Mapping[str, Any], field_name: str) -> None:
+    for key in ("answer_values_redacted", "event_ids_redacted"):
+        _require_true(payload[key], f"{field_name}.{key}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,9 +153,12 @@ class ReportSummary:
             value = getattr(self, field_name)
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 raise ValueError(f"{field_name} must be a non-negative integer")
-        _require_bool(self.redacted_share_default, "redacted_share_default")
-        _require_bool(self.hosted_dashboard, "hosted_dashboard")
-        _require_bool(self.production_adapter_support, "production_adapter_support")
+        _require_true(self.redacted_share_default, "redacted_share_default")
+        _require_false(self.hosted_dashboard, "hosted_dashboard")
+        _require_false(
+            self.production_adapter_support,
+            "production_adapter_support",
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable summary."""
@@ -185,21 +276,38 @@ class RedactedReportExport:
         object.__setattr__(
             self,
             "demo_outcome",
-            _json_mapping(self.demo_outcome, "demo_outcome"),
+            _json_mapping_with_exact_keys(
+                self.demo_outcome,
+                "demo_outcome",
+                _REDACTED_DEMO_OUTCOME_KEYS,
+            ),
         )
+        _validate_redaction_flags(self.demo_outcome, "demo_outcome")
+        _require_non_empty_tuple(self.proxy_outcomes, "proxy_outcomes")
         object.__setattr__(
             self,
             "proxy_outcomes",
             tuple(
-                _json_mapping(item, "proxy_outcomes item")
+                _json_mapping_with_exact_keys(
+                    item,
+                    "proxy_outcomes item",
+                    _REDACTED_PROXY_OUTCOME_KEYS,
+                )
                 for item in self.proxy_outcomes
             ),
         )
+        for item in self.proxy_outcomes:
+            _validate_redaction_flags(item, "proxy_outcomes item")
+        _require_non_empty_tuple(self.event_summaries, "event_summaries")
         object.__setattr__(
             self,
             "event_summaries",
             tuple(
-                _json_mapping(item, "event_summaries item")
+                _json_mapping_with_exact_keys(
+                    item,
+                    "event_summaries item",
+                    _REDACTED_EVENT_SUMMARY_KEYS,
+                )
                 for item in self.event_summaries
             ),
         )
@@ -261,8 +369,10 @@ class ReportResult:
                 for item in self.proxy_outcomes
             ),
         )
+        _require_non_empty_tuple(self.proxy_outcomes, "proxy_outcomes")
         if any(not isinstance(item, ReportEventSummary) for item in self.event_summaries):
             raise TypeError("event_summaries must contain ReportEventSummary")
+        _require_non_empty_tuple(self.event_summaries, "event_summaries")
         if not isinstance(self.capability_report, AdapterCapabilityReport):
             raise TypeError("capability_report must be AdapterCapabilityReport")
         object.__setattr__(
@@ -309,10 +419,10 @@ class ReportBundle:
             "summary": self.report.summary.to_dict(),
             "redacted_export": self.redacted_export.to_dict(),
             "files": {
-                "output_dir": str(self.output_dir),
-                "report_json": str(self.report_json_path),
-                "html": str(self.html_path),
-                "redacted_export": str(self.redacted_export_path),
+                "paths_redacted": True,
+                "report_json": self.report_json_path.name,
+                "html": self.html_path.name,
+                "redacted_export": self.redacted_export_path.name,
             },
         }
 

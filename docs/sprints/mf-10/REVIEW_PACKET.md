@@ -112,13 +112,15 @@ Final local gates:
 
 - focused MF-10/schema/CLI tests:
   `uv run --python 3.12 --extra dev pytest tests/test_report.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
-  - `45` passed
+  - initial: `45` passed
+  - fix-pass: `47` passed
 - focused type checks:
   `uv run --python 3.12 --extra dev mypy src/memory_firewall/report.py src/memory_firewall/schema.py src/memory_firewall/cli.py src/memory_firewall/__init__.py tests/test_report.py tests/test_cli.py tests/test_schema_and_taxonomy.py`
   - `Success: no issues found in 7 source files`
 - full test suite:
   `uv run --python 3.12 --extra dev pytest -q`
-  - `146` passed
+  - initial: `146` passed
+  - fix-pass: `148` passed
 - type checks:
   - `UV_PROJECT_ENVIRONMENT=.venv-310-mypy uv run --python 3.10 --extra dev mypy src tests`
   - `UV_PROJECT_ENVIRONMENT=.venv-311-mypy uv run --python 3.11 --extra dev mypy src tests`
@@ -137,6 +139,8 @@ Final local gates:
   - CLI JSON stdout and `redacted-share.json` omitted `Helio`, `Mirage`,
     `mfev_v1_`, `mfrevitem_v1_`, `mfreceipt_v1_`, `chat:attacker-note`, and
     `registry:project`;
+  - fix-pass CLI JSON stdout also omits the local output directory path and
+    reports only filenames plus `paths_redacted: true`;
   - local `report.json` and `index.html` may contain local demo answer values,
     but the generated share/export path does not.
 - package build and metadata:
@@ -154,7 +158,26 @@ Final local gates:
 
 ## Exact-Head Review
 
-Pending.
+Initial independent reviewer `Locke`
+(`019ee6db-ab59-7ae0-9996-a83db35ecf21`) found:
+
+- P1: `RedactedReportExport` accepted arbitrary mappings and could serialize
+  schema-invalid/unredacted keys through the public API.
+- P2: `ReportSummary` accepted claim flags that violated the schema constants.
+- P2: `ReportBundle.to_dict()` and CLI `--json` included absolute local file
+  paths.
+
+Fix-pass response:
+
+- `RedactedReportExport` now requires exact redacted mapping keys for demo
+  outcome, proxy outcomes, and event summaries, and validates redaction flags.
+- `ReportSummary` now enforces `redacted_share_default is True`,
+  `hosted_dashboard is False`, and `production_adapter_support is False`.
+- `ReportBundle.to_dict()` and CLI `--json` now emit filename-only file
+  metadata with `paths_redacted: true`.
+- Regression tests cover all three findings.
+
+Final exact-head review after fix-pass: pending.
 
 ## Residual Risks
 

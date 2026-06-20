@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from jsonschema import Draft202012Validator
 
 from memory_firewall import (
@@ -8,7 +9,9 @@ from memory_firewall import (
     REPORT_HTML_FILENAME,
     REPORT_JSON_FILENAME,
     REPORT_VERSION,
+    RedactedReportExport,
     ReportBundle,
+    ReportSummary,
     generate_demo_report,
     redacted_report_export_schema,
     report_result_schema,
@@ -52,6 +55,33 @@ def test_redacted_export_omits_answer_values_and_stable_ids(tmp_path: Path) -> N
     Draft202012Validator(redacted_report_export_schema()).validate(payload)
 
 
+def test_redacted_export_rejects_schema_extra_keys(tmp_path: Path) -> None:
+    report = generate_demo_report()
+    redacted = write_report_bundle(report, tmp_path / "report").redacted_export
+    payload = redacted.to_dict()
+
+    with pytest.raises(ValueError, match="unexpected: naive_answer"):
+        RedactedReportExport(
+            export_version=payload["export_version"],
+            title=payload["title"],
+            summary=redacted.summary,
+            demo_outcome={**payload["demo_outcome"], "naive_answer": "Mirage"},
+            proxy_outcomes=tuple(payload["proxy_outcomes"]),
+            event_summaries=tuple(payload["event_summaries"]),
+            omissions=tuple(payload["omissions"]),
+            limitations=tuple(payload["limitations"]),
+        )
+
+
+def test_report_summary_rejects_false_claim_flags() -> None:
+    with pytest.raises(ValueError, match="redacted_share_default must be true"):
+        ReportSummary(1, 0, 1, 1, 1, False, False, False)
+    with pytest.raises(ValueError, match="hosted_dashboard must be false"):
+        ReportSummary(1, 0, 1, 1, 1, True, True, False)
+    with pytest.raises(ValueError, match="production_adapter_support must be false"):
+        ReportSummary(1, 0, 1, 1, 1, True, False, True)
+
+
 def test_write_report_bundle_is_deterministic_and_local(tmp_path: Path) -> None:
     report = generate_demo_report()
     first = write_report_bundle(report, tmp_path / "first")
@@ -78,3 +108,10 @@ def test_write_report_bundle_is_deterministic_and_local(tmp_path: Path) -> None:
     assert "Helio" not in encoded_bundle
     assert "Mirage" not in encoded_bundle
     assert "mfev_v1_" not in encoded_bundle
+    assert str(tmp_path) not in encoded_bundle
+    assert bundle_payload["files"] == {
+        "paths_redacted": True,
+        "report_json": REPORT_JSON_FILENAME,
+        "html": REPORT_HTML_FILENAME,
+        "redacted_export": REDACTED_EXPORT_FILENAME,
+    }

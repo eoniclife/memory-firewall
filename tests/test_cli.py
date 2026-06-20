@@ -164,6 +164,13 @@ def test_report_demo_json_command_writes_local_bundle(tmp_path, capsys) -> None:
     assert "Helio" not in encoded_share
     assert "Mirage" not in encoded_share
     assert "mfev_v1_" not in encoded_share
+    assert str(output_dir) not in encoded_stdout
+    assert payload["files"] == {
+        "paths_redacted": True,
+        "report_json": "report.json",
+        "html": "index.html",
+        "redacted_export": "redacted-share.json",
+    }
 
 
 def test_risks_json_command(capsys) -> None:  # type: ignore[no-untyped-def]
