@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
@@ -25,6 +26,8 @@ from memory_firewall import (
     policy_schema,
     risk_taxonomy,
     run_detectors,
+    scan_jsonl_events,
+    scan_result_schema,
     state_analysis_schema,
     state_assertion_schema,
 )
@@ -71,15 +74,16 @@ def test_finding_schema_uses_frozen_risk_taxonomy() -> None:
 def test_schema_bundle_includes_claim_budget() -> None:
     bundle = schema_bundle()
     budget = claim_budget()
-    assert bundle["schema_version"] == "mf-05"
+    assert bundle["schema_version"] == "mf-06"
     assert bundle["claim_budget"]["allowed"] == list(budget.allowed)
-    assert any("Does not scan real stores yet" in item for item in budget.not_allowed)
+    assert any("Does not scan real stores" in item for item in budget.not_allowed)
     assert "adapter_capability_report_schema" in bundle
     assert "policy_schema" in bundle
     assert "detector_pack_schema" in bundle
     assert "detector_result_schema" in bundle
     assert "state_assertion_schema" in bundle
     assert "state_analysis_schema" in bundle
+    assert "scan_result_schema" in bundle
     assert bundle["default_detector_pack"]["version"] == "mf-04"
 
 
@@ -125,6 +129,7 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     Draft202012Validator.check_schema(detector_result_schema())
     Draft202012Validator.check_schema(state_assertion_schema())
     Draft202012Validator.check_schema(state_analysis_schema())
+    Draft202012Validator.check_schema(scan_result_schema())
     Draft202012Validator(event_schema()).validate(event.to_dict())
     Draft202012Validator(evidence_span_schema()).validate(
         finding.evidence_span.to_dict()
@@ -136,6 +141,8 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     Draft202012Validator(detector_pack_schema()).validate(
         default_detector_pack().to_dict()
     )
+    scan_result = scan_jsonl_events([json.dumps(event.to_dict())], source="schema.jsonl")
+    Draft202012Validator(scan_result_schema()).validate(scan_result.to_dict())
 
 
 def test_detector_pack_schema_rejects_mislabeled_builtin_definition() -> None:

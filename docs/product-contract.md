@@ -1,8 +1,8 @@
 # Memory Firewall Product Contract
 
-MF-05 adds deterministic AMC-facing state analysis over supplied `MemoryEvent`
-JSON while keeping scanner, adapter, quarantine, trusted-read, and enforcement
-claims out of scope.
+MF-06 adds finite JSONL scan and stdin watch over normalized `MemoryEvent`
+streams while keeping real memory-store scanning, adapter, quarantine,
+trusted-read, and enforcement claims out of scope.
 
 ## Category Line
 
@@ -19,15 +19,16 @@ agent-memory-contracts
     Public semantic trust kernel and conformance layer
 
 memory-firewall
-    Public contract, detector pack, AMC candidate/evidence preview, conformance
-    probe, and CLI shell for the future inspection/demo/reference guardrail
+    Public contract, detector pack, AMC candidate/evidence preview, normalized
+    event-stream scan/watch, conformance probe, and CLI shell for the future
+    inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-05 Allows
+## MF-06 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -50,17 +51,28 @@ private orchestration layer
   validate against `agent-memory-contracts==1.3.0`;
 - redaction of sensitive candidate text in the AMC preview when detector output
   indicates secret-like or privacy-sensitive content;
+- finite scan over caller-supplied normalized `MemoryEvent` JSONL files;
+- stdin watch over caller-supplied normalized `MemoryEvent` JSONL streams;
+- scan-local rolling assertion context for contradiction analysis;
+- structured scan issues for invalid JSONL lines without echoing raw line
+  content;
+- deterministic scan/watch exit codes:
+  - `0`: completed with no invalid lines and no high-risk events;
+  - `1`: completed with at least one high-risk event;
+  - `2`: one or more invalid input lines were found;
 - machine-readable adapter capability reports;
 - a conformance probe over the built-in fake adapter;
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-05 Does Not Allow
+## MF-06 Does Not Allow
 
-- real memory scanning claims;
+- real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
   poisoning detection;
 - claims that state analysis proves truth or authorizes trusted memory;
+- claims that scan-local assertion context is a trusted ledger or reducer
+  decision;
 - automatic approval by an LLM;
 - trusted ledger writes or reducer decisions;
 - quarantine claims;
@@ -153,10 +165,10 @@ quarantine storage, or enforcement.
 
 ## Detector Surface
 
-MF-04 ships a built-in deterministic detector pack. The pack runs only over a
-supplied `MemoryEvent`; it does not scan a store, watch a directory, connect to
-a framework, call an LLM, use the network, or inspect files beyond an explicitly
-provided event JSON path.
+MF-04 ships a built-in deterministic detector pack. The pack runs only over
+supplied `MemoryEvent` payloads; it does not scan a store, watch a directory,
+connect to a framework, call an LLM, use the network, or inspect files beyond
+explicitly provided event JSON/JSONL paths.
 
 The built-in detector pack currently includes heuristics for:
 
@@ -212,6 +224,30 @@ The AMC mapping is a preview surface for later reducer workflows. It does not
 call `MemoryGate.promote`, write ledger records, create trusted snapshots, or
 approve memory.
 
+## Scan And Watch Surface
+
+MF-06 adds:
+
+- `memory-firewall scan <events.jsonl>`;
+- `memory-firewall scan <events.jsonl> --json`;
+- `memory-firewall scan <events.jsonl> --json --summary-only`;
+- `memory-firewall watch --stdin`;
+- `memory-firewall watch --stdin --json`.
+
+Both commands expect normalized `MemoryEvent` JSON objects, one per line. They
+do not connect to a live framework or memory store. The scan/watch layer
+composes existing detector, policy, and state-analysis surfaces. It does not
+create a separate judgment path.
+
+Finite scans keep only scan-local assertion context needed for contradiction
+analysis. That context is not trusted state, is not written to disk, and is not
+a reducer decision. JSON output includes event records unless `--summary-only`
+is used. Invalid input lines emit structured issues with generic error messages
+and no raw line echo.
+
+Watch mode is stdin-only in MF-06. It emits one terminal or JSONL result per
+input line and handles `KeyboardInterrupt` without a traceback.
+
 ## Adapter Capability Surface
 
 The adapter capability report contains:
@@ -254,7 +290,7 @@ Disposition describes the recommended handling:
 - `review`
 - `quarantine`
 
-`quarantine` is only an advisory disposition value in MF-04. This sprint does
+`quarantine` is only an advisory disposition value in MF-06. This sprint does
 not implement quarantine storage or enforcement.
 
 Use `poisoned` only for attack demos or confirmed adversarial cases. Normal

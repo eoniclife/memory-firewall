@@ -14,7 +14,7 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository is in MF-05: AMC state analysis.
+This repository is in MF-06: scan and watch over normalized event streams.
 
 Implemented now:
 
@@ -27,17 +27,19 @@ Implemented now:
 - deterministic AMC candidate/evidence previews for supplied events;
 - local state assertions, source-authority assessment, contradiction checks,
   and supersession candidates;
+- finite JSONL scan over normalized `MemoryEvent` records;
+- stdin watch over normalized `MemoryEvent` JSONL streams;
 - adapter capability report model and schema;
 - a built-in fake adapter conformance probe;
-- machine-readable event/finding/detector/state-analysis schemas;
+- machine-readable event/finding/detector/state-analysis/scan schemas;
 - risk taxonomy and claim budget;
 - CLI commands for `doctor`, `schema`, `risks`, `claims`, `policy`, `detect`,
-  `analyze`, and `conformance`;
+  `analyze`, `scan`, `watch`, and `conformance`;
 - CI, package metadata, and review packet.
 
 Not implemented yet:
 
-- memory scanning;
+- real memory-store scanning;
 - quarantine;
 - trusted read paths;
 - HTML reports;
@@ -55,11 +57,14 @@ uv run --python 3.12 --extra dev memory-firewall schema detector-pack
 uv run --python 3.12 --extra dev memory-firewall schema detector-result
 uv run --python 3.12 --extra dev memory-firewall schema state-assertion
 uv run --python 3.12 --extra dev memory-firewall schema state-analysis
+uv run --python 3.12 --extra dev memory-firewall schema scan-result
 uv run --python 3.12 --extra dev memory-firewall risks
 uv run --python 3.12 --extra dev memory-firewall claims
 uv run --python 3.12 --extra dev memory-firewall policy --json
 uv run --python 3.12 --extra dev memory-firewall detect --event event.json --json
 uv run --python 3.12 --extra dev memory-firewall analyze --event event.json --json
+uv run --python 3.12 --extra dev memory-firewall scan events.jsonl --json
+uv run --python 3.12 --extra dev memory-firewall watch --stdin --json < events.jsonl
 uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 ```
 
@@ -70,14 +75,14 @@ objective truth, secure an entire agent, stop every poisoning attack, or
 automatically approve important memories.
 
 The broader public launch target is an installable local artifact for inspecting
-and explaining integrity risks in persistent agent memory. MF-05 does not scan
-real stores. It can run deterministic heuristic detectors over one supplied
-`MemoryEvent` JSON document, map the event into AMC evidence/candidate preview
-records, and flag low-authority contradictions before later trusted-state
-promotion. Those findings and analysis results are signals for reducer review,
-not proof of objective truth, adversarial intent, or universal poisoning
-detection. Enforcement claims are allowed only where Memory Firewall controls
-the relevant read/write chokepoint.
+and explaining integrity risks in persistent agent memory. MF-06 still does not
+connect to real stores. It can run deterministic heuristic detectors and
+state-analysis over caller-supplied normalized `MemoryEvent` JSON or JSONL
+streams, carry scan-local assertion context to surface contradictions, and emit
+structured PASS/WARN/HIGH-RISK output. Those findings and analysis results are
+signals for reducer review, not proof of objective truth, adversarial intent,
+or universal poisoning detection. Enforcement claims are allowed only where
+Memory Firewall controls the relevant read/write chokepoint.
 
 ## Relationship To Agent Memory Contracts
 

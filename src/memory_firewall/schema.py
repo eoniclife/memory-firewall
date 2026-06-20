@@ -22,10 +22,11 @@ from .models import (
     SourceAuthority,
     SourceType,
 )
+from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-05"
+SCHEMA_VERSION = "mf-06"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -545,6 +546,113 @@ def state_analysis_schema() -> dict[str, Any]:
     }
 
 
+def scan_result_schema() -> dict[str, Any]:
+    """Return the MF-06 finite JSONL scan result schema."""
+
+    issue_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["issue_id", "line_number", "error_type", "message"],
+        "properties": {
+            "issue_id": {
+                "type": "string",
+                "pattern": f"^{SCAN_ISSUE_ID_PREFIX}[0-9a-f]{{32}}$",
+            },
+            "line_number": {"type": "integer", "minimum": 1},
+            "error_type": {"type": "string", "minLength": 1},
+            "message": {"const": "line could not be parsed as a valid MemoryEvent"},
+        },
+    }
+    event_result_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "line_number",
+            "event_id",
+            "level",
+            "highest_disposition",
+            "finding_count",
+            "contradiction_count",
+            "detector_result",
+            "state_analysis",
+        ],
+        "properties": {
+            "line_number": {"type": "integer", "minimum": 1},
+            "event_id": {"type": "string", "pattern": "^mfev_v1_[0-9a-f]{32}$"},
+            "level": {
+                "type": "string",
+                "enum": _enum_values(ScanEventLevel),
+            },
+            "highest_disposition": {
+                "type": "string",
+                "enum": _enum_values(RecommendedDisposition),
+            },
+            "finding_count": {"type": "integer", "minimum": 0},
+            "contradiction_count": {"type": "integer", "minimum": 0},
+            "detector_result": detector_result_schema(),
+            "state_analysis": state_analysis_schema(),
+        },
+    }
+    summary_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "total_lines",
+            "analyzed_events",
+            "invalid_lines",
+            "pass_events",
+            "warn_events",
+            "high_risk_events",
+            "total_findings",
+            "blocked_low_authority_contradictions",
+            "highest_disposition",
+        ],
+        "properties": {
+            "total_lines": {"type": "integer", "minimum": 0},
+            "analyzed_events": {"type": "integer", "minimum": 0},
+            "invalid_lines": {"type": "integer", "minimum": 0},
+            "pass_events": {"type": "integer", "minimum": 0},
+            "warn_events": {"type": "integer", "minimum": 0},
+            "high_risk_events": {"type": "integer", "minimum": 0},
+            "total_findings": {"type": "integer", "minimum": 0},
+            "blocked_low_authority_contradictions": {
+                "type": "integer",
+                "minimum": 0,
+            },
+            "highest_disposition": {
+                "type": "string",
+                "enum": _enum_values(RecommendedDisposition),
+            },
+        },
+    }
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/scan-result.mf-06.json",
+        "title": "ScanResult",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "scan_version",
+            "source",
+            "summary",
+            "events",
+            "issues",
+            "metadata",
+        ],
+        "properties": {
+            "scan_version": {"const": SCAN_VERSION},
+            "source": {"type": "string", "minLength": 1},
+            "summary": summary_schema,
+            "events": {"type": "array", "items": event_result_schema},
+            "issues": {"type": "array", "items": issue_schema},
+            "metadata": {
+                "type": "object",
+                "additionalProperties": True,
+            },
+        },
+    }
+
+
 def schema_bundle() -> dict[str, Any]:
     """Return the complete public contract bundle."""
 
@@ -561,6 +669,7 @@ def schema_bundle() -> dict[str, Any]:
         "detector_result_schema": detector_result_schema(),
         "state_assertion_schema": state_assertion_schema(),
         "state_analysis_schema": state_analysis_schema(),
+        "scan_result_schema": scan_result_schema(),
         "default_detector_pack": default_detector_pack().to_dict(),
         "risk_taxonomy": [item.to_dict() for item in risk_taxonomy()],
         "claim_budget": claim_budget().to_dict(),
