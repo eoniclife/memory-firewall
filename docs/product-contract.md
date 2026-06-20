@@ -1,8 +1,8 @@
 # Memory Firewall Product Contract
 
-MF-04 adds deterministic local detectors over supplied `MemoryEvent` JSON while
-keeping scanner, adapter, quarantine, trusted-read, and enforcement claims out
-of scope.
+MF-05 adds deterministic AMC-facing state analysis over supplied `MemoryEvent`
+JSON while keeping scanner, adapter, quarantine, trusted-read, and enforcement
+claims out of scope.
 
 ## Category Line
 
@@ -19,15 +19,15 @@ agent-memory-contracts
     Public semantic trust kernel and conformance layer
 
 memory-firewall
-    Public contract, detector pack, conformance probe, and CLI shell for the
-    future inspection/demo/reference guardrail
+    Public contract, detector pack, AMC candidate/evidence preview, conformance
+    probe, and CLI shell for the future inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-04 Allows
+## MF-05 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -40,16 +40,29 @@ private orchestration layer
 - deterministic heuristic detectors over one supplied `MemoryEvent` JSON
   document;
 - policy recommendations for detector findings;
+- deterministic local state assertions derived from supplied `MemoryEvent`
+  payloads;
+- declared source-authority assessment;
+- contradiction checks against caller-supplied `MemoryStateAssertion` fixtures;
+- supersession candidates when a higher-authority update conflicts with an
+  older assertion;
+- AMC `SourceRecord`, `EvidenceSpan`, and `CandidateClaim` preview records that
+  validate against `agent-memory-contracts==1.3.0`;
+- redaction of sensitive candidate text in the AMC preview when detector output
+  indicates secret-like or privacy-sensitive content;
 - machine-readable adapter capability reports;
 - a conformance probe over the built-in fake adapter;
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-04 Does Not Allow
+## MF-05 Does Not Allow
 
 - real memory scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
   poisoning detection;
+- claims that state analysis proves truth or authorizes trusted memory;
+- automatic approval by an LLM;
+- trusted ledger writes or reducer decisions;
 - quarantine claims;
 - trusted-read claims;
 - real framework adapter claims;
@@ -67,7 +80,7 @@ The `operation` enum is contract vocabulary for adapter/event producers:
 - `delete`
 - `import`
 
-These values describe the proposed memory operation. They do not mean MF-04 can
+These values describe the proposed memory operation. They do not mean MF-05 can
 execute, block, import from a framework, or enforce that operation.
 
 ## Canonical Event Surface
@@ -158,6 +171,46 @@ The built-in detector pack currently includes heuristics for:
 Detector findings must include explicit limitations and anchored evidence spans.
 They are review signals. They do not prove that text is false, malicious,
 poisoned, or safe.
+
+## State Analysis Surface
+
+MF-05 adds `memory-firewall analyze --event <path|-> --json`.
+
+The command runs the deterministic detector pack, derives one local
+`MemoryStateAssertion`, assesses declared source authority, checks for
+contradictions against optional caller-supplied `MemoryStateAssertion` records,
+and emits an AMC candidate/evidence preview.
+
+The state-analysis result contains:
+
+- `analysis_id`
+- `analysis_version`
+- `event_id`
+- `assertion`
+- `authority_assessment`
+- `contradictions`
+- `supersession_candidate_ids`
+- `trusted_state_action`
+- `reason_codes`
+- `limitations`
+- `finding_ids`
+- `amc_mapping`
+
+`trusted_state_action` is deliberately conservative:
+
+- `candidate_only`
+- `requires_reducer_review`
+- `blocked_low_authority_contradiction`
+
+A low-authority contradiction cannot silently become trusted state in MF-05:
+it is emitted as `blocked_low_authority_contradiction` and the AMC candidate
+preview remains `needs_review`. A higher-authority conflicting update can only
+create a supersession candidate. It still requires reducer review and does not
+write trusted state.
+
+The AMC mapping is a preview surface for later reducer workflows. It does not
+call `MemoryGate.promote`, write ledger records, create trusted snapshots, or
+approve memory.
 
 ## Adapter Capability Surface
 

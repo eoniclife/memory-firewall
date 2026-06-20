@@ -1,5 +1,21 @@
 """Memory Firewall public package surface."""
 
+from .analysis import (
+    ANALYSIS_VERSION,
+    ANALYSIS_ID_PREFIX,
+    ASSERTION_ID_PREFIX,
+    AMCMapping,
+    AuthorityAssessment,
+    MemoryStateAssertion,
+    StateAnalysisResult,
+    StateAssertionStatus,
+    StateContradiction,
+    TrustedStateAction,
+    analyze_memory_state,
+    assess_source_authority,
+    compute_state_analysis_id,
+    compute_state_assertion_id,
+)
 from .claim_budget import ClaimBudget, claim_budget
 from .adapters import (
     AdapterCapability,
@@ -57,6 +73,8 @@ from .schema import (
     finding_schema,
     policy_schema,
     schema_bundle,
+    state_analysis_schema,
+    state_assertion_schema,
 )
 from .taxonomy import RiskCategoryDefinition, risk_taxonomy
 from .version import __version__
@@ -65,6 +83,11 @@ __all__ = [
     "ClaimBudget",
     "AdapterCapability",
     "AdapterCapabilityReport",
+    "AMCMapping",
+    "ANALYSIS_ID_PREFIX",
+    "ANALYSIS_VERSION",
+    "ASSERTION_ID_PREFIX",
+    "AuthorityAssessment",
     "ConformanceCheckResult",
     "ConformanceResult",
     "DETECTOR_PACK_NAME",
@@ -78,6 +101,7 @@ __all__ = [
     "EvidenceField",
     "EvidenceSpan",
     "JSONScalar",
+    "MemoryStateAssertion",
     "MemoryAdapter",
     "MemoryEvent",
     "MemoryFinding",
@@ -86,12 +110,20 @@ __all__ = [
     "RiskCategory",
     "RiskCategoryDefinition",
     "RiskSeverity",
+    "StateAnalysisResult",
+    "StateAssertionStatus",
+    "StateContradiction",
     "SourceAuthority",
     "SourceType",
+    "TrustedStateAction",
     "__version__",
     "adapter_capability_report_schema",
     "baseline_disposition_for_severity",
     "claim_budget",
+    "analyze_memory_state",
+    "assess_source_authority",
+    "compute_state_analysis_id",
+    "compute_state_assertion_id",
     "compute_memory_event_id",
     "compute_memory_finding_id",
     "default_detector_pack",
@@ -112,4 +144,6 @@ __all__ = [
     "run_detectors",
     "SEVERITY_ORDER",
     "schema_bundle",
+    "state_analysis_schema",
+    "state_assertion_schema",
 ]

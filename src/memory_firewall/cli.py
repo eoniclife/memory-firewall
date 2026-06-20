@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from .adapters import demo_memory_adapter
+from .analysis import MemoryStateAssertion, analyze_memory_state
 from .claim_budget import claim_budget
 from .conformance import run_adapter_conformance
 from .detectors import default_detector_pack, run_detectors
@@ -25,6 +26,8 @@ from .schema import (
     finding_schema,
     policy_schema,
     schema_bundle,
+    state_analysis_schema,
+    state_assertion_schema,
 )
 from .taxonomy import risk_taxonomy
 from .version import __version__
@@ -58,6 +61,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "policy",
             "detector-pack",
             "detector-result",
+            "state-assertion",
+            "state-analysis",
             "bundle",
         ),
         help="Schema to print.",
@@ -83,6 +88,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to MemoryEvent JSON. Use '-' to read from stdin.",
     )
     detect_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    analyze_parser = subparsers.add_parser(
+        "analyze",
+        help="Analyze one event as an AMC candidate/state assertion preview.",
+    )
+    analyze_parser.add_argument(
+        "--event",
+        default="-",
+        help="Path to MemoryEvent JSON. Use '-' to read from stdin.",
+    )
+    analyze_parser.add_argument(
+        "--existing-assertions",
+        help=(
+            "Optional path to a JSON array of MemoryStateAssertion records to "
+            "check for contradictions."
+        ),
+    )
+    analyze_parser.add_argument("--json", action="store_true", dest="as_json")
 
     conformance_parser = subparsers.add_parser(
         "conformance", help="Run adapter conformance probes."
@@ -124,6 +147,10 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = detector_pack_schema()
     elif name == "detector-result":
         payload = detector_result_schema()
+    elif name == "state-assertion":
+        payload = state_assertion_schema()
+    elif name == "state-analysis":
+        payload = state_analysis_schema()
     else:
         payload = schema_bundle()
     _print_json(payload, stdout)
@@ -220,6 +247,39 @@ def _run_detect(event_path: str, as_json: bool, stdin: TextIO, stdout: TextIO) -
     return 0
 
 
+def _load_existing_assertions(path: str | None) -> tuple[MemoryStateAssertion, ...]:
+    if path is None:
+        return ()
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise TypeError("existing assertions JSON must be an array")
+    return tuple(MemoryStateAssertion.from_dict(item) for item in payload)
+
+
+def _run_analyze(
+    event_path: str,
+    existing_assertions_path: str | None,
+    as_json: bool,
+    stdin: TextIO,
+    stdout: TextIO,
+) -> int:
+    event = MemoryEvent.from_dict(_load_event_json(event_path, stdin))
+    result = analyze_memory_state(
+        event,
+        existing_assertions=_load_existing_assertions(existing_assertions_path),
+    )
+    if as_json:
+        _print_json(result.to_dict(), stdout)
+    else:
+        print(
+            f"{result.analysis_version}: {result.trusted_state_action.value}",
+            file=stdout,
+        )
+        for reason in result.reason_codes:
+            print(f"- {reason}", file=stdout)
+    return 0
+
+
 def _run_conformance(adapter: str, as_json: bool, stdout: TextIO) -> int:
     if adapter != "demo":
         raise ValueError(f"unsupported adapter: {adapter}")
@@ -255,6 +315,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_policy(bool(args.as_json), sys.stdout)
     if args.command == "detect":
         return _run_detect(str(args.event), bool(args.as_json), sys.stdin, sys.stdout)
+    if args.command == "analyze":
+        existing_assertions_path = (
+            None
+            if args.existing_assertions is None
+            else str(args.existing_assertions)
+        )
+        return _run_analyze(
+            str(args.event),
+            existing_assertions_path,
+            bool(args.as_json),
+            sys.stdin,
+            sys.stdout,
+        )
     if args.command == "conformance":
         return _run_conformance(str(args.adapter), bool(args.as_json), sys.stdout)
     parser.error(f"unknown command: {args.command}")

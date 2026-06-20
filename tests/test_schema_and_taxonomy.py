@@ -25,6 +25,8 @@ from memory_firewall import (
     policy_schema,
     risk_taxonomy,
     run_detectors,
+    state_analysis_schema,
+    state_assertion_schema,
 )
 from memory_firewall.schema import schema_bundle
 
@@ -69,13 +71,15 @@ def test_finding_schema_uses_frozen_risk_taxonomy() -> None:
 def test_schema_bundle_includes_claim_budget() -> None:
     bundle = schema_bundle()
     budget = claim_budget()
-    assert bundle["schema_version"] == "mf-04"
+    assert bundle["schema_version"] == "mf-05"
     assert bundle["claim_budget"]["allowed"] == list(budget.allowed)
     assert any("Does not scan real stores yet" in item for item in budget.not_allowed)
     assert "adapter_capability_report_schema" in bundle
     assert "policy_schema" in bundle
     assert "detector_pack_schema" in bundle
     assert "detector_result_schema" in bundle
+    assert "state_assertion_schema" in bundle
+    assert "state_analysis_schema" in bundle
     assert bundle["default_detector_pack"]["version"] == "mf-04"
 
 
@@ -119,6 +123,8 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     Draft202012Validator.check_schema(policy_schema())
     Draft202012Validator.check_schema(detector_pack_schema())
     Draft202012Validator.check_schema(detector_result_schema())
+    Draft202012Validator.check_schema(state_assertion_schema())
+    Draft202012Validator.check_schema(state_analysis_schema())
     Draft202012Validator(event_schema()).validate(event.to_dict())
     Draft202012Validator(evidence_span_schema()).validate(
         finding.evidence_span.to_dict()
