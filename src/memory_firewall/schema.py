@@ -39,7 +39,7 @@ from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-11"
+SCHEMA_VERSION = "mf-12"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -1512,7 +1512,7 @@ def hermes_status_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-status.mf-11.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-status.mf-12.json",
         "title": "HermesStatus",
         "type": "object",
         "additionalProperties": False,

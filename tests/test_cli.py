@@ -17,7 +17,7 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["package"] == "memory-firewall"
-    assert payload["schema_version"] == "mf-11"
+    assert payload["schema_version"] == "mf-12"
     assert payload["hermes_status_schema"]["title"] == "HermesStatus"
 
 
@@ -126,6 +126,31 @@ def test_hermes_status_schema_command_prints_json(capsys) -> None:  # type: igno
     assert payload["title"] == "HermesStatus"
     assert payload["properties"]["observe_only"]["const"] is True
     assert payload["properties"]["production_enforcement"]["const"] is False
+
+
+def test_hermes_install_plugin_json_command(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    assert (
+        main(
+            [
+                "hermes",
+                "install-plugin",
+                "--hermes-home",
+                str(tmp_path),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["plugin_name"] == "memory-firewall"
+    assert payload["created"] is True
+    assert payload["updated"] is True
+    assert payload["enable_command"] == "hermes plugins enable memory-firewall"
+    assert payload["observe_only"] is True
+    assert payload["production_enforcement"] is False
+    assert (tmp_path / "plugins" / "memory-firewall" / "plugin.yaml").exists()
+    assert (tmp_path / "plugins" / "memory-firewall" / "__init__.py").exists()
 
 
 def test_demo_poison_json_command(capsys) -> None:  # type: ignore[no-untyped-def]

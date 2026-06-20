@@ -14,8 +14,9 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository is in MF-11: a first observe-only Hermes hook alpha over the
-existing Memory Firewall scan/detector/report surfaces.
+This repository is in MF-12: a first observe-only Hermes hook alpha plus a
+Hermes user-plugin shim installer over the existing Memory Firewall
+scan/detector/report surfaces.
 
 Implemented now:
 
@@ -39,6 +40,8 @@ Implemented now:
 - observe-only Hermes hook helpers for high-signal memory write attempts;
 - a Hermes plugin entry point for `pre_tool_call`, `post_tool_call`, and
   `post_llm_call`;
+- a Hermes user-plugin shim installer for Hermes versions whose CLI cannot
+  enable entry-point-only plugins;
 - local Hermes diagnostics JSONL and `memory-firewall hermes status`;
 - adapter capability report model and schema;
 - a built-in fake adapter conformance probe;
@@ -102,12 +105,13 @@ uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 
 ## Hermes Hook Alpha
 
-The MF-11 Hermes integration is observe-only. Install the package into the same
-Python environment that runs Hermes, enable the `memory-firewall` plugin in
-Hermes, then start a fresh Hermes session.
+The MF-12 Hermes integration is observe-only. Install the package into the same
+Python environment that runs Hermes, install the Hermes user-plugin shim, enable
+the `memory-firewall` plugin in Hermes, then start a fresh Hermes session.
 
 ```bash
 python -m pip install -e .
+memory-firewall hermes install-plugin
 hermes plugins enable memory-firewall
 memory-firewall hermes status --json
 ```
@@ -181,6 +185,12 @@ content. Turn-level scanning for implicit memory providers is opt-in via
 `MEMORY_FIREWALL_HERMES_SCAN_TURNS=1`. MF-11 does not replace the active Hermes
 memory provider, suppress Mem0/Honcho/GBrain writes, inject trusted context,
 write a trusted ledger, or provide production enforcement.
+
+MF-12 adds `memory-firewall hermes install-plugin`. The command writes a small
+user-plugin shim under `~/.hermes/plugins/memory-firewall/` so Hermes versions
+whose `plugins enable` command discovers only directory plugins can still enable
+the installed package. The shim delegates to `memory_firewall.hermes_plugin`;
+runtime logic and diagnostics stay in the package.
 
 ## Relationship To Agent Memory Contracts
 
