@@ -1,16 +1,20 @@
 from collections.abc import Sequence
 
+import pytest
 from jsonschema import Draft202012Validator
 
 from memory_firewall import (
     AdapterCapability,
     AdapterCapabilityReport,
     MemoryEvent,
+    MemoryOperation,
     ProxyMode,
     REFERENCE_PROXY_SOURCE,
     REFERENCE_PROXY_VERSION,
     ReferenceProxyResult,
     ScanEventLevel,
+    SourceAuthority,
+    SourceType,
     reference_proxy_capability_report,
     reference_proxy_result_schema,
     run_adapter_conformance,
@@ -60,6 +64,30 @@ def test_reference_proxy_output_is_deterministic() -> None:
     second = run_reference_proxy(ProxyMode.ENFORCE).to_dict()
 
     assert first == second
+
+
+def test_reference_proxy_rejects_scan_incompatible_custom_events() -> None:
+    custom_event = MemoryEvent(
+        event_id="evt_custom_valid_runtime",
+        timestamp="2026-06-20T15:02:00Z",
+        actor="agent:reference-proxy",
+        user_or_tenant_scope="tenant:demo",
+        source_type=SourceType.TOOL_OUTPUT,
+        source_id="registry:project:custom-record",
+        source_authority=SourceAuthority.SIGNED_RECORD,
+        raw_or_redacted_content="Signed project registry record says Helio.",
+        proposed_memory="Signed project registry record says Helio.",
+        operation=MemoryOperation.UPSERT,
+        target_namespace="project",
+        metadata={
+            "state_subject": "tenant:demo:project:codename",
+            "state_predicate": "project_codename",
+            "state_object": "Helio",
+        },
+    )
+
+    with pytest.raises(ValueError, match="scan-compatible MemoryEvent records"):
+        run_reference_proxy(ProxyMode.OVERLAY, events=(custom_event,))
 
 
 def test_reference_proxy_capability_report_passes_conformance() -> None:

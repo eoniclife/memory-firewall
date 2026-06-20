@@ -155,7 +155,14 @@ Final local gates:
 
 ## Exact-Head Review
 
-Pending.
+- Initial independent exact-head review by `Kierkegaard` on
+  `23a3c2aae44477aa06f0b13a33df8fa7b031c38c` requested changes because
+  caller-supplied `events=` could produce scan issues and return a
+  schema-invalid proxy result with no write decisions.
+- Fix-pass behavior: `run_reference_proxy(...)` now rejects scan-incompatible
+  custom events before constructing a `ReferenceProxyResult`, with regression
+  coverage.
+- Final exact-head review: pending.
 
 ## Residual Risks
 

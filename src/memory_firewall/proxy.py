@@ -302,6 +302,10 @@ def run_reference_proxy(
         json.dumps(event.to_dict(), sort_keys=True) + "\n" for event in active_events
     ]
     scan_result = scan_jsonl_events(lines, source=REFERENCE_PROXY_SOURCE)
+    if scan_result.issues or len(scan_result.events) != len(active_events):
+        raise ValueError(
+            "reference proxy events must be scan-compatible MemoryEvent records"
+        )
     review_queue = enqueue_scan_result(scan_result)
     preview = trusted_read_preview(review_queue)
     review_item_by_event = {item.event_id: item.item_id for item in review_queue.items}
