@@ -17,7 +17,8 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["package"] == "memory-firewall"
-    assert payload["schema_version"] == "mf-13"
+    assert payload["schema_version"] == "mf-14"
+    assert payload["hermes_checkup_schema"]["title"] == "HermesCheckup"
     assert payload["hermes_status_schema"]["title"] == "HermesStatus"
     assert payload["hermes_observations_schema"]["title"] == "HermesObservations"
 
@@ -137,6 +138,15 @@ def test_hermes_observations_schema_command_prints_json(capsys) -> None:  # type
     assert payload["properties"]["raw_content_included"]["const"] is False
 
 
+def test_hermes_checkup_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "hermes-checkup"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "HermesCheckup"
+    assert payload["properties"]["observe_only"]["const"] is True
+    assert payload["properties"]["production_enforcement"]["const"] is False
+
+
 def test_hermes_install_plugin_json_command(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
     assert (
         main(
@@ -160,6 +170,50 @@ def test_hermes_install_plugin_json_command(tmp_path, capsys) -> None:  # type: 
     assert payload["production_enforcement"] is False
     assert (tmp_path / "plugins" / "memory-firewall" / "plugin.yaml").exists()
     assert (tmp_path / "plugins" / "memory-firewall" / "__init__.py").exists()
+
+
+def test_hermes_checkup_json_command_with_sample(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "hermes"
+    state_dir = tmp_path / "state"
+    assert (
+        main(
+            [
+                "hermes",
+                "install-plugin",
+                "--hermes-home",
+                str(home),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    (home / "config.yaml").write_text(
+        "plugins:\n  enabled:\n    - memory-firewall\n",
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "hermes",
+                "checkup",
+                "--hermes-home",
+                str(home),
+                "--state-dir",
+                str(state_dir),
+                "--write-sample",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["overall_status"] == "ready"
+    assert payload["sample_written"] is True
+    assert payload["status"]["total_observations"] == 1
+    assert "Ignore previous system instructions" not in captured.out
 
 
 def test_demo_poison_json_command(capsys) -> None:  # type: ignore[no-untyped-def]

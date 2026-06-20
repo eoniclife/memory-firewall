@@ -1,10 +1,10 @@
 # Memory Firewall Product Contract
 
-MF-13 adds a redacted Hermes observations readout over the first observe-only
-Hermes hook alpha, Hermes user-plugin shim installer, and existing scan,
-detector, review, proxy, and report surfaces while keeping broad real
-memory-store scanning, provider replacement, trusted ledger writes, hosted
-dashboards, and production enforcement claims out of scope.
+MF-14 adds a local Hermes setup checkup over the first observe-only Hermes hook
+alpha, Hermes user-plugin shim installer, redacted Hermes observations readout,
+and existing scan, detector, review, proxy, and report surfaces while keeping
+broad real memory-store scanning, provider replacement, trusted ledger writes,
+hosted dashboards, and production enforcement claims out of scope.
 
 ## Category Line
 
@@ -25,15 +25,16 @@ memory-firewall
     event-stream scan/watch, local review queue, override receipts, trusted-read
     preview, poisoning demo, reference proxy, local static report, redacted
     share export, Hermes observe-only hook alpha, Hermes user-plugin shim
-    installer, redacted Hermes observations readout, conformance probe, and CLI
-    shell for the future inspection/demo/reference guardrail
+    installer, redacted Hermes observations readout, local Hermes checkup,
+    conformance probe, and CLI shell for the future inspection/demo/reference
+    guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-13 Allows
+## MF-14 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -107,6 +108,12 @@ private orchestration layer
 - `memory-firewall hermes observations --json`;
 - redacted newest-first Hermes observation summaries over local diagnostics;
 - machine-readable `hermes-observations` schema;
+- `memory-firewall hermes checkup --json`;
+- local Hermes setup checks over generated shim files, `plugins.enabled`
+  config-file hints, diagnostics permissions, status counts, and recent
+  redacted observations;
+- explicit synthetic local observation writes for first-run readout validation;
+- machine-readable `hermes-checkup` schema;
 - opt-in turn-level scanning for implicit memory providers via
   `MEMORY_FIREWALL_HERMES_SCAN_TURNS=1`;
 - local configuration of the Hermes diagnostics directory via
@@ -120,7 +127,7 @@ private orchestration layer
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-13 Does Not Allow
+## MF-14 Does Not Allow
 
 - broad real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -146,6 +153,9 @@ private orchestration layer
   decisions, or approved memories;
 - claims that the Hermes observations CLI is a raw trace export or safe-to-share
   transcript export;
+- claims that Hermes checkup proves a live Hermes runtime has loaded the plugin;
+- claims that Hermes checkup proves runtime enforcement, provider replacement,
+  or write suppression;
 - automatic trusted-context injection into Hermes prompts;
 - claims that the local report is a hosted dashboard, telemetry service, auth
   system, billing system, or server process;
@@ -464,6 +474,14 @@ MF-13 adds:
 - `memory-firewall schema hermes-observations`;
 - `--state-dir`, `--limit`, and `--json` observation readout options.
 
+MF-14 adds:
+
+- `memory-firewall hermes checkup`;
+- `memory-firewall hermes checkup --json`;
+- `memory-firewall hermes checkup --write-sample`;
+- `memory-firewall schema hermes-checkup`;
+- `--hermes-home`, `--state-dir`, `--limit`, and `--json` checkup options.
+
 The Hermes hook alpha is deliberately observe-only. It can be enabled by Hermes
 as a standalone plugin and can run alongside the active Hermes memory provider.
 It does not set `memory.provider`, wrap a provider, replace Mem0/Honcho, or
@@ -504,6 +522,14 @@ categories, and detector names. It does not print raw candidate memory text or
 turn transcripts, does not expose the raw-derived MemoryEvent ID in the redacted
 readout, and does not make the underlying local diagnostics safe to share
 wholesale.
+
+The MF-14 checkup readout is local setup evidence. It can say whether generated
+shim files match this package, whether a local config file lists
+`memory-firewall` under `plugins.enabled`, whether diagnostics paths have
+private permissions, and whether redacted observations are readable. With
+`--write-sample`, it writes one synthetic local observation to prove the readout
+path. It does not prove a live Hermes runtime has loaded the plugin in a current
+session.
 
 ## Adapter Capability Surface
 

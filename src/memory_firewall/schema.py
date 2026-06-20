@@ -39,7 +39,7 @@ from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-13"
+SCHEMA_VERSION = "mf-14"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -1512,7 +1512,7 @@ def hermes_status_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-status.mf-13.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-status.mf-14.json",
         "title": "HermesStatus",
         "type": "object",
         "additionalProperties": False,
@@ -1628,7 +1628,7 @@ def hermes_observations_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-observations.mf-13.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-observations.mf-14.json",
         "title": "HermesObservations",
         "type": "object",
         "additionalProperties": False,
@@ -1662,6 +1662,108 @@ def hermes_observations_schema() -> dict[str, Any]:
     }
 
 
+def _hermes_checkup_check_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["name", "status", "message"],
+        "properties": {
+            "name": {"type": "string", "minLength": 1},
+            "status": {"type": "string", "enum": ["pass", "warn", "fail"]},
+            "message": {"type": "string", "minLength": 1},
+        },
+    }
+
+
+def _nullable_octal_mode_schema() -> dict[str, Any]:
+    return {
+        "anyOf": [
+            {"type": "string", "pattern": "^[0-7]{4}$"},
+            {"type": "null"},
+        ],
+    }
+
+
+def hermes_checkup_schema() -> dict[str, Any]:
+    """Return the Hermes local setup checkup JSON schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-checkup.mf-14.json",
+        "title": "HermesCheckup",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "integration_version",
+            "package_version",
+            "overall_status",
+            "hermes_home",
+            "plugin_name",
+            "plugin_dir",
+            "manifest_path",
+            "init_path",
+            "config_path",
+            "plugin_shim_installed",
+            "manifest_matches",
+            "init_matches",
+            "config_mentions_plugin",
+            "state_dir",
+            "state_dir_exists",
+            "state_dir_mode",
+            "events_file_exists",
+            "events_file_mode",
+            "observations_file_exists",
+            "observations_file_mode",
+            "sample_written",
+            "checks",
+            "next_steps",
+            "status",
+            "recent_observations",
+            "observe_only",
+            "production_enforcement",
+        ],
+        "properties": {
+            "integration_version": {"const": HERMES_INTEGRATION_VERSION},
+            "package_version": {"type": "string", "minLength": 1},
+            "overall_status": {
+                "type": "string",
+                "enum": ["ready", "needs_setup", "attention"],
+            },
+            "hermes_home": {"type": "string", "minLength": 1},
+            "plugin_name": {"const": "memory-firewall"},
+            "plugin_dir": {"type": "string", "minLength": 1},
+            "manifest_path": {"type": "string", "minLength": 1},
+            "init_path": {"type": "string", "minLength": 1},
+            "config_path": {"type": "string", "minLength": 1},
+            "plugin_shim_installed": {"type": "boolean"},
+            "manifest_matches": {"type": "boolean"},
+            "init_matches": {"type": "boolean"},
+            "config_mentions_plugin": {"type": "boolean"},
+            "state_dir": {"type": "string", "minLength": 1},
+            "state_dir_exists": {"type": "boolean"},
+            "state_dir_mode": _nullable_octal_mode_schema(),
+            "events_file_exists": {"type": "boolean"},
+            "events_file_mode": _nullable_octal_mode_schema(),
+            "observations_file_exists": {"type": "boolean"},
+            "observations_file_mode": _nullable_octal_mode_schema(),
+            "sample_written": {"type": "boolean"},
+            "checks": {
+                "type": "array",
+                "minItems": 1,
+                "items": _hermes_checkup_check_schema(),
+            },
+            "next_steps": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+            },
+            "status": hermes_status_schema(),
+            "recent_observations": hermes_observations_schema(),
+            "observe_only": {"const": True},
+            "production_enforcement": {"const": False},
+        },
+    }
+
+
 def schema_bundle() -> dict[str, Any]:
     """Return the complete public contract bundle."""
 
@@ -1686,6 +1788,7 @@ def schema_bundle() -> dict[str, Any]:
         "reference_proxy_result_schema": reference_proxy_result_schema(),
         "report_result_schema": report_result_schema(),
         "redacted_report_export_schema": redacted_report_export_schema(),
+        "hermes_checkup_schema": hermes_checkup_schema(),
         "hermes_status_schema": hermes_status_schema(),
         "hermes_observations_schema": hermes_observations_schema(),
         "default_detector_pack": default_detector_pack().to_dict(),
