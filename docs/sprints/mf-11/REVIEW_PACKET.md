@@ -185,7 +185,23 @@ Expanded local gates:
     loaded `memory_firewall.hermes_plugin`;
   - `uv pip check` passed.
 
-PR URL, CI status, and exact-head review verdicts must be recorded before merge.
+PR and CI:
+
+- PR: `https://github.com/eoniclife/memory-firewall/pull/11`
+- Base: `456ed6db2c878d2dff80e0a900be1ad7e8961473`
+- Initial reviewed head:
+  `d5f414cfbf6498d0d49f361faef09aa5ca659563`
+- Fix-pass reviewed head:
+  `569db1c7b4d69389c779c55b584251b3632e4fed`
+- PR CI on fix-pass head:
+  `https://github.com/eoniclife/memory-firewall/actions/runs/27885179605`
+  - `pytest (3.10)`: success;
+  - `pytest (3.11)`: success;
+  - `pytest (3.12)`: success;
+  - `mypy (3.10)`: success;
+  - `mypy (3.11)`: success;
+  - `mypy (3.12)`: success;
+  - `package artifacts`: success.
 
 Reviewer fix-pass:
 
@@ -231,6 +247,16 @@ Reviewer fix-pass:
     - `importlib.metadata.entry_points(group="hermes_agent.plugins")` loaded
       `memory_firewall.hermes_plugin`;
     - `uv pip check` passed.
+- Native GitHub Codex review request on exact fix-pass head:
+  `https://github.com/eoniclife/memory-firewall/pull/11#issuecomment-4760109631`
+  - result: eyes reaction only; not counted as approval.
+- Independent reviewer `Chandrasekhar`
+  (`019ee70d-e800-7433-9029-cdc35fb2f969`) accepted exact fix-pass head
+  `569db1c7b4d69389c779c55b584251b3632e4fed` with no blockers or findings.
+  Residual risks match this packet: standalone hooks cannot see
+  provider-internal `sync_turn` writes exactly, turn-level scanning is noisy and
+  opt-in, diagnostics are append-only without stronger file locking, and
+  enforcement remains out of scope.
 
 ## Residual Risks
 
