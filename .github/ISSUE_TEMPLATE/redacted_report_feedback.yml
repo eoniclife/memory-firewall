@@ -1,0 +1,26 @@
+name: Redacted report feedback
+description: Share usability feedback on a local redacted report.
+title: "[Report]: "
+labels: ["report-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please attach or paste only redacted-share.json content. Do not include report.json if it contains local values you do not intend to share.
+  - type: textarea
+    id: redacted_report
+    attributes:
+      label: Redacted report excerpt
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: confusing
+    attributes:
+      label: What was confusing?
+    validations:
+      required: true
+  - type: textarea
+    id: useful
+    attributes:
+      label: What was useful?

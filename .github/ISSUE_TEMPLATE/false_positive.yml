@@ -1,0 +1,29 @@
+name: False positive report
+description: Report a finding that should not have been flagged.
+title: "[False positive]: "
+labels: ["false-positive"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share redacted report details only. Do not paste raw private memory content.
+  - type: textarea
+    id: redacted_report
+    attributes:
+      label: Redacted report excerpt
+      description: Paste the relevant section from redacted-share.json.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should Memory Firewall have reported instead?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Safe context
+      description: Any non-sensitive context that helps reproduce the issue.

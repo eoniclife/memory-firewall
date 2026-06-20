@@ -25,6 +25,7 @@ from .models import (
 )
 from .proxy import REFERENCE_PROXY_VERSION, ProxyMode
 from .reference_store import REFERENCE_CHANNEL_GOVERNED, REFERENCE_CHANNEL_NATIVE
+from .report import REDACTED_EXPORT_VERSION, REPORT_VERSION
 from .review import (
     OVERRIDE_RECEIPT_ID_PREFIX,
     REVIEW_ITEM_ID_PREFIX,
@@ -37,7 +38,7 @@ from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-09"
+SCHEMA_VERSION = "mf-10"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -1208,6 +1209,303 @@ def reference_proxy_result_schema() -> dict[str, Any]:
     }
 
 
+def _report_summary_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "pass_events",
+            "warn_events",
+            "high_risk_events",
+            "queued_items",
+            "suppressed_native_writes",
+            "redacted_share_default",
+            "hosted_dashboard",
+            "production_adapter_support",
+        ],
+        "properties": {
+            "pass_events": {"type": "integer", "minimum": 0},
+            "warn_events": {"type": "integer", "minimum": 0},
+            "high_risk_events": {"type": "integer", "minimum": 0},
+            "queued_items": {"type": "integer", "minimum": 0},
+            "suppressed_native_writes": {"type": "integer", "minimum": 0},
+            "redacted_share_default": {"const": True},
+            "hosted_dashboard": {"const": False},
+            "production_adapter_support": {"const": False},
+        },
+    }
+
+
+def _report_event_summary_schema(*, redacted: bool) -> dict[str, Any]:
+    properties: dict[str, Any] = {
+        "event_label": {"type": "string", "pattern": "^event_[0-9]+$"},
+        "line_number": {"type": "integer", "minimum": 1},
+        "level": {"type": "string", "enum": _enum_values(ScanEventLevel)},
+        "highest_disposition": {
+            "type": "string",
+            "enum": _enum_values(RecommendedDisposition),
+        },
+        "finding_count": {"type": "integer", "minimum": 0},
+        "contradiction_count": {"type": "integer", "minimum": 0},
+        "risk_categories": {
+            "type": "array",
+            "items": {"type": "string", "enum": _enum_values(RiskCategory)},
+            "uniqueItems": True,
+        },
+        "suppressed_native_write": {"type": "boolean"},
+    }
+    required = [
+        "event_label",
+        "line_number",
+        "level",
+        "highest_disposition",
+        "finding_count",
+        "contradiction_count",
+        "risk_categories",
+        "suppressed_native_write",
+    ]
+    if redacted:
+        properties["review_item_present"] = {"type": "boolean"}
+        required.append("review_item_present")
+    else:
+        properties["event_id"] = {
+            "type": "string",
+            "pattern": "^mfev_v1_[0-9a-f]{32}$",
+        }
+        properties["review_item_id"] = {
+            "anyOf": [
+                {
+                    "type": "string",
+                    "pattern": f"^{REVIEW_ITEM_ID_PREFIX}[0-9a-f]{{32}}$",
+                },
+                {"type": "null"},
+            ],
+        }
+        required.extend(["event_id", "review_item_id"])
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": required,
+        "properties": properties,
+    }
+
+
+def _report_demo_outcome_schema(*, redacted: bool) -> dict[str, Any]:
+    properties: dict[str, Any] = {
+        "naive_memory_was_poisoned": {"type": "boolean"},
+        "benign_memory_passed": {"type": "boolean"},
+        "firewall_high_risk_events": {"type": "integer", "minimum": 0},
+        "queued_items": {"type": "integer", "minimum": 0},
+        "pending_preview_items": {"type": "integer", "minimum": 0},
+        "rejected_preview_items": {"type": "integer", "minimum": 0},
+        "override_preview_items": {"type": "integer", "minimum": 0},
+    }
+    required = list(properties)
+    if redacted:
+        properties["answer_values_redacted"] = {"const": True}
+        properties["event_ids_redacted"] = {"const": True}
+        required.extend(["answer_values_redacted", "event_ids_redacted"])
+    else:
+        properties.update(
+            {
+                "naive_answer": {"type": "string", "minLength": 1},
+                "source_of_record_answer": {"type": "string", "minLength": 1},
+                "firewall_high_risk_event_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "pattern": "^mfev_v1_[0-9a-f]{32}$",
+                    },
+                    "uniqueItems": True,
+                },
+                "default_path_excludes_unreviewed_memory": {"type": "boolean"},
+                "reject_path_excludes_forged_memory": {"type": "boolean"},
+                "override_path_requires_receipt": {"type": "boolean"},
+            }
+        )
+        required.extend(
+            [
+                "naive_answer",
+                "source_of_record_answer",
+                "firewall_high_risk_event_ids",
+                "default_path_excludes_unreviewed_memory",
+                "reject_path_excludes_forged_memory",
+                "override_path_requires_receipt",
+            ]
+        )
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": required,
+        "properties": properties,
+    }
+
+
+def _report_proxy_outcome_schema(*, redacted: bool) -> dict[str, Any]:
+    if redacted:
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "mode",
+                "high_risk_events",
+                "queued_items",
+                "trusted_read_preview_items",
+                "suppressed_native_write_count",
+                "native_record_count",
+                "governed_context_record_count",
+                "answer_values_redacted",
+                "event_ids_redacted",
+            ],
+            "properties": {
+                "mode": {"type": "string", "enum": _enum_values(ProxyMode)},
+                "high_risk_events": {"type": "integer", "minimum": 0},
+                "queued_items": {"type": "integer", "minimum": 0},
+                "trusted_read_preview_items": {"type": "integer", "minimum": 0},
+                "suppressed_native_write_count": {"type": "integer", "minimum": 0},
+                "native_record_count": {"type": "integer", "minimum": 0},
+                "governed_context_record_count": {"type": "integer", "minimum": 0},
+                "answer_values_redacted": {"const": True},
+                "event_ids_redacted": {"const": True},
+            },
+        }
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "mode",
+            "native_answer",
+            "governed_context_answer",
+            "high_risk_events",
+            "queued_items",
+            "trusted_read_preview_items",
+            "suppressed_native_event_ids",
+            "native_record_count",
+            "governed_context_record_count",
+        ],
+        "properties": {
+            "mode": {"type": "string", "enum": _enum_values(ProxyMode)},
+            "native_answer": {
+                "anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}],
+            },
+            "governed_context_answer": {
+                "anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}],
+            },
+            "high_risk_events": {"type": "integer", "minimum": 0},
+            "queued_items": {"type": "integer", "minimum": 0},
+            "trusted_read_preview_items": {"type": "integer", "minimum": 0},
+            "suppressed_native_event_ids": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "pattern": "^mfev_v1_[0-9a-f]{32}$",
+                },
+                "uniqueItems": True,
+            },
+            "native_record_count": {"type": "integer", "minimum": 0},
+            "governed_context_record_count": {"type": "integer", "minimum": 0},
+        },
+    }
+
+
+def report_result_schema() -> dict[str, Any]:
+    """Return the MF-10 local report schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/report-result.mf-10.json",
+        "title": "ReportResult",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "report_version",
+            "title",
+            "source",
+            "summary",
+            "demo_outcome",
+            "proxy_outcomes",
+            "event_summaries",
+            "capability_report",
+            "limitations",
+            "metadata",
+        ],
+        "properties": {
+            "report_version": {"const": REPORT_VERSION},
+            "title": {"type": "string", "minLength": 1},
+            "source": {"type": "string", "minLength": 1},
+            "summary": _report_summary_schema(),
+            "demo_outcome": _report_demo_outcome_schema(redacted=False),
+            "proxy_outcomes": {
+                "type": "array",
+                "minItems": 1,
+                "items": _report_proxy_outcome_schema(redacted=False),
+            },
+            "event_summaries": {
+                "type": "array",
+                "minItems": 1,
+                "items": _report_event_summary_schema(redacted=False),
+            },
+            "capability_report": adapter_capability_report_schema(),
+            "limitations": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+            },
+            "metadata": _metadata_schema(),
+        },
+    }
+
+
+def redacted_report_export_schema() -> dict[str, Any]:
+    """Return the MF-10 redacted report export schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/redacted-report-export.mf-10.json",
+        "title": "RedactedReportExport",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "export_version",
+            "redacted",
+            "title",
+            "summary",
+            "demo_outcome",
+            "proxy_outcomes",
+            "event_summaries",
+            "omissions",
+            "limitations",
+        ],
+        "properties": {
+            "export_version": {"const": REDACTED_EXPORT_VERSION},
+            "redacted": {"const": True},
+            "title": {"type": "string", "minLength": 1},
+            "summary": _report_summary_schema(),
+            "demo_outcome": _report_demo_outcome_schema(redacted=True),
+            "proxy_outcomes": {
+                "type": "array",
+                "minItems": 1,
+                "items": _report_proxy_outcome_schema(redacted=True),
+            },
+            "event_summaries": {
+                "type": "array",
+                "minItems": 1,
+                "items": _report_event_summary_schema(redacted=True),
+            },
+            "omissions": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+            },
+            "limitations": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+            },
+        },
+    }
+
+
 def schema_bundle() -> dict[str, Any]:
     """Return the complete public contract bundle."""
 
@@ -1230,6 +1528,8 @@ def schema_bundle() -> dict[str, Any]:
         "trusted_read_preview_schema": trusted_read_preview_schema(),
         "demo_result_schema": demo_result_schema(),
         "reference_proxy_result_schema": reference_proxy_result_schema(),
+        "report_result_schema": report_result_schema(),
+        "redacted_report_export_schema": redacted_report_export_schema(),
         "default_detector_pack": default_detector_pack().to_dict(),
         "risk_taxonomy": [item.to_dict() for item in risk_taxonomy()],
         "claim_budget": claim_budget().to_dict(),

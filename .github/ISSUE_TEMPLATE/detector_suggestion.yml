@@ -1,0 +1,34 @@
+name: Detector suggestion
+description: Suggest a new deterministic detector or policy rule.
+title: "[Detector]: "
+labels: ["detector"]
+body:
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk pattern
+      description: What memory-integrity risk should this catch?
+    validations:
+      required: true
+  - type: textarea
+    id: signal
+    attributes:
+      label: Deterministic signal
+      description: What local evidence should trigger it without an LLM call?
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Expected severity
+      options:
+        - informational
+        - suspicious
+        - high_impact
+    validations:
+      required: true
+  - type: textarea
+    id: limitations
+    attributes:
+      label: Limitations
+      description: When should this detector not fire?
