@@ -235,6 +235,37 @@ def test_secret_detector_does_not_republish_complete_secret() -> None:
     assert secret_findings[0].evidence_span.quote == "token"
 
 
+def test_secret_detector_catches_password_with_punctuation() -> None:
+    secret = "p@ssw0rd!"
+    event = MemoryEvent.from_adapter_payload(
+        {
+            "timestamp": "2026-06-20T15:00:00Z",
+            "actor": "agent:test",
+            "user_or_tenant_scope": "tenant:demo",
+            "source_type": SourceType.USER_MESSAGE.value,
+            "source_id": "msg_password",
+            "source_authority": SourceAuthority.USER_ASSERTED.value,
+            "raw_or_redacted_content": f"Remember database password is {secret}",
+            "proposed_memory": f"Remember database password is {secret}",
+            "operation": "create",
+            "target_namespace": "demo",
+            "metadata": {"fixture": "password"},
+        }
+    )
+
+    result = run_detectors(event)
+    serialized = json.dumps(result.to_dict(), sort_keys=True)
+    secret_findings = [
+        finding
+        for finding in result.findings
+        if finding.detector_name == "secret-pattern-v1"
+    ]
+
+    assert secret_findings
+    assert secret not in serialized
+    assert secret_findings[0].evidence_span.quote == "password"
+
+
 def test_secret_detector_does_not_republish_complete_card_like_number() -> None:
     card_like_number = "4111 1111 1111 1111"
     event = MemoryEvent.from_adapter_payload(

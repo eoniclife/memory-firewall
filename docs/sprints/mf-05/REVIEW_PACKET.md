@@ -204,3 +204,66 @@ Fix-pass gates:
   - `uv pip check` passed
   - installed `analyze --event <fixture> --json` confirmed metadata-object and
     actor secrets were absent from output
+
+## GPT Pro Exact-Head Review And Second Fix Pass
+
+GPT Pro reviewed exact head
+`f3a836cbd5500211f595d479a379a93f9399ed9a` through Oracle session
+`memory-firewall-mf05-pro-final`.
+
+Status: requested changes. The captured answer was terse but identified three
+current-head blocker classes:
+
+- detector-result injection;
+- incomplete password redaction;
+- schema-invalid imported assertions.
+
+Second fix-pass changes:
+
+- Treat caller-supplied `DetectorResult` values as cache hints only: supplied
+  detector results must exactly match the built-in deterministic detector output
+  for the event before state analysis will use them.
+- Strengthen secret-label redaction to catch password/credential values with
+  punctuation or quoted values without swallowing unrelated following prose.
+- Keep `detect` and `analyze` aligned by using the same strengthened
+  secret-label pattern in the detector pack and the analysis redactor.
+- Tighten imported `MemoryStateAssertion` validation:
+  - imported values must be mappings;
+  - `asserted_at` must be an RFC 3339 timestamp;
+  - `supersedes` must contain unique strings;
+  - unredacted assertions must have an `object_hash_sha256` matching
+    `object_value`.
+- Added regressions for forged quiet detector results, password punctuation,
+  direct detector password coverage, invalid imported assertion shapes, and
+  unredacted object-hash mismatch.
+
+Second fix-pass focused gates:
+
+- focused MF-05/detector/schema/CLI tests:
+  `uv run pytest tests/test_analysis.py tests/test_detectors.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
+  - `61` passed
+- full test suite:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev pytest -q`
+  - `109` passed
+- type checks:
+  - Python `3.10`, `3.11`, and `3.12` mypy all reported
+    `Success: no issues found in 22 source files`
+- bytecode smoke:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev python -m compileall -q src tests`
+- CLI/schema JSON smokes:
+  - `doctor`, `schema bundle`, `schema state-assertion`,
+    `schema state-analysis`, `claims`, and `analyze`
+  - password-with-punctuation fixture was absent from serialized analysis
+    output
+- whitespace check:
+  `git diff --check`
+- package build and metadata:
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-full uv build --out-dir /tmp/memory-firewall-mf05-dist`
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev twine check /tmp/memory-firewall-mf05-dist/*`
+- installed-wheel smoke:
+  - installed `memory_firewall-0.1.0.dev5-py3-none-any.whl`
+  - `uv pip check` passed
+  - installed `doctor`, `schema state-analysis`, and `analyze --event <fixture>
+    --json` passed
+  - installed-wheel analysis output was checked for password-with-punctuation
+    absence

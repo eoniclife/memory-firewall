@@ -246,7 +246,8 @@ def _event_text(event: MemoryEvent, field: EvidenceField) -> str:
 
 _SECRET_LABEL_PATTERN = re.compile(
     r"\b(?P<label>api[_\-\s]?key|secret|password|passwd|token)\b"
-    r"\s*[:=]\s*(?P<secret>[A-Za-z0-9_\-]{8,})",
+    r"\s*(?::|=|\bis\b)\s*"
+    r"(?P<secret>\"[^\"\r\n]{4,}\"|'[^'\r\n]{4,}'|[^\s,;\r\n]{4,})",
     re.I,
 )
 _OPENAI_KEY_PATTERN = re.compile(r"\bsk-[A-Za-z0-9_\-]{16,}\b")

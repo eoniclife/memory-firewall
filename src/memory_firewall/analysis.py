@@ -32,6 +32,7 @@ from .models import (
     _canonical_json,
     _coerce_metadata,
     _freeze_metadata,
+    _require_timestamp,
     _require_string,
 )
 
@@ -58,7 +59,8 @@ _STATE_ASSERTION_KEYS = frozenset(
 _MEMORY_EVENT_ID_RE = re.compile(rf"^{EVENT_ID_PREFIX}[0-9a-f]{{32}}$")
 _SECRET_LABEL_PATTERN = re.compile(
     r"\b(?P<label>api[_\-\s]?key|secret|password|passwd|token)\b"
-    r"\s*[:=]\s*(?P<secret>[A-Za-z0-9_\-]{8,})",
+    r"\s*(?::|=|\bis\b)\s*"
+    r"(?P<secret>\"[^\"\r\n]{4,}\"|'[^'\r\n]{4,}'|[^\s,;\r\n]{4,})",
     re.I,
 )
 _SECRET_LABEL_HINT_PATTERN = re.compile(
@@ -176,6 +178,15 @@ def _string_tuple(value: tuple[str, ...] | list[str], field_name: str) -> tuple[
     coerced = tuple(value)
     if any(not isinstance(item, str) or not item for item in coerced):
         raise ValueError(f"{field_name} must contain non-empty strings")
+    return coerced
+
+
+def _unique_string_tuple(
+    value: tuple[str, ...] | list[str], field_name: str
+) -> tuple[str, ...]:
+    coerced = _string_tuple(value, field_name)
+    if len(set(coerced)) != len(coerced):
+        raise ValueError(f"{field_name} must contain unique strings")
     return coerced
 
 
@@ -409,8 +420,15 @@ class MemoryStateAssertion:
         )
         object.__setattr__(self, "status", _coerce_status(self.status))
         object.__setattr__(
-            self, "supersedes", _string_tuple(self.supersedes, "supersedes")
+            self, "supersedes", _unique_string_tuple(self.supersedes, "supersedes")
         )
+        _require_timestamp(self.asserted_at, "asserted_at")
+        if not self.object_redacted and self.object_hash_sha256 != _sha256_text(
+            self.object_value
+        ):
+            raise ValueError(
+                "object_hash_sha256 must match object_value when object_redacted is false"
+            )
         metadata = {} if self.metadata is None else self.metadata
         object.__setattr__(self, "metadata", _freeze_metadata(metadata))
         if self.assertion_id != _PENDING_ASSERTION_ID:
@@ -446,6 +464,8 @@ class MemoryStateAssertion:
     def from_dict(cls, value: Mapping[str, Any]) -> "MemoryStateAssertion":
         """Build an assertion from JSON-like data."""
 
+        if not isinstance(value, Mapping):
+            raise TypeError("MemoryStateAssertion must be a mapping")
         _reject_unknown_fields(value, _STATE_ASSERTION_KEYS, "MemoryStateAssertion")
         metadata_value = value.get("metadata", {})
         if not isinstance(metadata_value, Mapping):
@@ -494,7 +514,7 @@ class MemoryStateAssertion:
                 max_chars=MAX_TEXT_FIELD_CHARS,
             ),
             status=_coerce_status(value["status"]),
-            supersedes=_string_tuple(value.get("supersedes", ()), "supersedes"),
+            supersedes=_unique_string_tuple(value.get("supersedes", ()), "supersedes"),
             metadata=_coerce_metadata(metadata_value),
         )
 
@@ -691,7 +711,7 @@ class StateAnalysisResult:
         object.__setattr__(
             self,
             "supersession_candidate_ids",
-            _string_tuple(
+            _unique_string_tuple(
                 self.supersession_candidate_ids,
                 "supersession_candidate_ids",
             ),
@@ -706,7 +726,7 @@ class StateAnalysisResult:
             self, "limitations", _string_tuple(self.limitations, "limitations")
         )
         object.__setattr__(
-            self, "finding_ids", _string_tuple(self.finding_ids, "finding_ids")
+            self, "finding_ids", _unique_string_tuple(self.finding_ids, "finding_ids")
         )
         if not isinstance(self.amc_mapping, AMCMapping):
             raise TypeError("amc_mapping must be an AMCMapping")
@@ -739,6 +759,22 @@ def _requires_redaction(findings: tuple[Any, ...]) -> bool:
         or getattr(finding, "detector_name", "") == "secret-pattern-v1"
         for finding in findings
     )
+
+
+def _validated_detector_result(
+    event: MemoryEvent,
+    detector_result: DetectorResult | None,
+) -> DetectorResult:
+    expected = run_detectors(event)
+    if detector_result is None:
+        return expected
+    if detector_result.event_id != event.event_id:
+        raise ValueError("detector_result event_id must match event.event_id")
+    if detector_result.to_dict() != expected.to_dict():
+        raise ValueError(
+            "detector_result must match the built-in deterministic detector output"
+        )
+    return detector_result
 
 
 def _high_impact(findings: tuple[Any, ...]) -> bool:
@@ -977,9 +1013,7 @@ def analyze_memory_state(
 ) -> StateAnalysisResult:
     """Analyze one event against optional existing local state assertions."""
 
-    active_detector_result = detector_result or run_detectors(event)
-    if active_detector_result.event_id != event.event_id:
-        raise ValueError("detector_result event_id must match event.event_id")
+    active_detector_result = _validated_detector_result(event, detector_result)
     findings = active_detector_result.findings
     assertion = MemoryStateAssertion.from_event(
         event,

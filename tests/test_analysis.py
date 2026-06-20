@@ -3,6 +3,9 @@ import json
 from jsonschema import Draft202012Validator
 
 from memory_firewall import (
+    DETECTOR_PACK_NAME,
+    DETECTOR_PACK_VERSION,
+    DetectorResult,
     MemoryEvent,
     MemoryOperation,
     MemoryStateAssertion,
@@ -192,6 +195,47 @@ def test_metadata_secret_predicate_redacts_opaque_state_object() -> None:
     assert secret not in serialized
 
 
+def test_password_with_punctuation_is_redacted_from_analysis_output() -> None:
+    secret = "p@ssw0rd!"
+    event = _event(
+        authority=SourceAuthority.USER_ASSERTED,
+        source_id="msg:password",
+        state_object=f"database password is {secret}",
+        content=f"Remember database password is {secret}",
+    )
+
+    result = analyze_memory_state(event)
+    serialized = json.dumps(result.to_dict(), sort_keys=True)
+
+    assert result.assertion.object_redacted is True
+    assert secret not in serialized
+    assert result.amc_mapping.evidence_span["text_excerpt"] is None
+
+
+def test_supplied_detector_result_must_match_deterministic_detector_output() -> None:
+    secret = "sk-ABCDEFGHIJKLMNOPQRSTUV"
+    event = _event(
+        authority=SourceAuthority.USER_ASSERTED,
+        source_id="msg:secret-bypass",
+        state_object="non-secret display value",
+        content=f"Remember api_key={secret}",
+    )
+    forged_quiet_result = DetectorResult(
+        event_id=event.event_id,
+        pack_name=DETECTOR_PACK_NAME,
+        pack_version=DETECTOR_PACK_VERSION,
+        findings=(),
+        policy_recommendations=(),
+    )
+
+    try:
+        analyze_memory_state(event, detector_result=forged_quiet_result)
+    except ValueError as exc:
+        assert "detector_result must match" in str(exc)
+    else:
+        raise AssertionError("analyze_memory_state accepted forged detector_result")
+
+
 def test_actor_secret_is_not_republished_in_amc_source_record() -> None:
     secret_actor = "sk-ACTORABCDEFGHIJKLMNOP"
     event = MemoryEvent.from_adapter_payload(
@@ -274,6 +318,31 @@ def test_state_assertion_rejects_unknown_fields_and_malformed_event_id() -> None
         try:
             MemoryStateAssertion.from_dict(invalid_payload)
         except ValueError:
+            pass
+        else:
+            raise AssertionError("MemoryStateAssertion accepted schema-invalid input")
+
+
+def test_state_assertion_rejects_schema_invalid_imported_shapes() -> None:
+    event = _event(
+        authority=SourceAuthority.TOOL_OBSERVED,
+        source_id="crm:account:imported",
+        state_object="Enterprise",
+        content="CRM account tier is Enterprise.",
+    )
+    assertion = MemoryStateAssertion.from_event(event, redact_object=False)
+    payload = assertion.to_dict()
+
+    invalid_payloads = (
+        "not-an-object",
+        {**payload, "asserted_at": "not-a-timestamp"},
+        {**payload, "supersedes": ["mfassert_v1_deadbeef", "mfassert_v1_deadbeef"]},
+        {**payload, "object_hash_sha256": "0" * 64},
+    )
+    for invalid_payload in invalid_payloads:
+        try:
+            MemoryStateAssertion.from_dict(invalid_payload)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
             pass
         else:
             raise AssertionError("MemoryStateAssertion accepted schema-invalid input")
