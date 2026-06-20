@@ -17,7 +17,7 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["package"] == "memory-firewall"
-    assert payload["schema_version"] == "mf-05"
+    assert payload["schema_version"] == "mf-06"
 
 
 def test_adapter_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
@@ -60,6 +60,13 @@ def test_state_analysis_schema_command_prints_json(capsys) -> None:  # type: ign
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["title"] == "StateAnalysisResult"
+
+
+def test_scan_result_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "scan-result"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "ScanResult"
 
 
 def test_risks_json_command(capsys) -> None:  # type: ignore[no-untyped-def]
@@ -162,8 +169,8 @@ def test_analyze_json_command_flags_low_authority_contradiction(tmp_path, capsys
             "source_type": SourceType.TOOL_OUTPUT.value,
             "source_id": "erp:payout:trusted",
             "source_authority": SourceAuthority.SIGNED_RECORD.value,
-            "raw_or_redacted_content": "Signed ERP payout recipient is Alice.",
-            "proposed_memory": "Signed ERP payout recipient is Alice.",
+            "raw_or_redacted_content": "Signed ERP field value is Alice.",
+            "proposed_memory": "Signed ERP field value is Alice.",
             "operation": "upsert",
             "target_namespace": "finance",
             "metadata": {
@@ -186,8 +193,8 @@ def test_analyze_json_command_flags_low_authority_contradiction(tmp_path, capsys
             "source_type": SourceType.UNKNOWN.value,
             "source_id": "unknown",
             "source_authority": SourceAuthority.UNTRUSTED.value,
-            "raw_or_redacted_content": "Payment recipient change to Mallory.",
-            "proposed_memory": "Payment recipient change to Mallory.",
+            "raw_or_redacted_content": "Untrusted note says Mallory.",
+            "proposed_memory": "Untrusted note says Mallory.",
             "operation": "upsert",
             "target_namespace": "finance",
             "metadata": {
@@ -222,3 +229,88 @@ def test_analyze_json_command_flags_low_authority_contradiction(tmp_path, capsys
     payload = json.loads(captured.out)
     assert payload["trusted_state_action"] == "blocked_low_authority_contradiction"
     assert payload["contradictions"]
+
+
+def test_scan_json_command_flags_stream_contradiction(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    trusted = MemoryEvent.from_adapter_payload(
+        {
+            "timestamp": "2026-06-20T15:00:00Z",
+            "actor": "agent:test",
+            "user_or_tenant_scope": "tenant:demo",
+            "source_type": SourceType.TOOL_OUTPUT.value,
+            "source_id": "erp:payout:trusted",
+            "source_authority": SourceAuthority.SIGNED_RECORD.value,
+            "raw_or_redacted_content": "Signed ERP field value is Alice.",
+            "proposed_memory": "Signed ERP field value is Alice.",
+            "operation": "upsert",
+            "target_namespace": "finance",
+            "metadata": {
+                "state_subject": "tenant:demo:finance:payout",
+                "state_predicate": "payment_recipient",
+                "state_object": "Alice",
+            },
+        }
+    )
+    candidate = MemoryEvent.from_adapter_payload(
+        {
+            "timestamp": "2026-06-20T15:00:00Z",
+            "actor": "agent:test",
+            "user_or_tenant_scope": "tenant:demo",
+            "source_type": SourceType.UNKNOWN.value,
+            "source_id": "unknown",
+            "source_authority": SourceAuthority.UNTRUSTED.value,
+            "raw_or_redacted_content": "Untrusted note says Mallory.",
+            "proposed_memory": "Untrusted note says Mallory.",
+            "operation": "upsert",
+            "target_namespace": "finance",
+            "metadata": {
+                "state_subject": "tenant:demo:finance:payout",
+                "state_predicate": "payment_recipient",
+                "state_object": "Mallory",
+            },
+        }
+    )
+    jsonl_path = tmp_path / "events.jsonl"
+    jsonl_path.write_text(
+        "\n".join(json.dumps(event.to_dict()) for event in (trusted, candidate))
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert main(["scan", str(jsonl_path), "--json"]) == 1
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["summary"]["total_lines"] == 2
+    assert payload["summary"]["high_risk_events"] == 1
+    assert payload["events"][1]["state_analysis"]["trusted_state_action"] == (
+        "blocked_low_authority_contradiction"
+    )
+
+
+def test_watch_json_command_reads_stdin(capsys, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    event = MemoryEvent.from_adapter_payload(
+        {
+            "timestamp": "2026-06-20T15:00:00Z",
+            "actor": "agent:test",
+            "user_or_tenant_scope": "tenant:demo",
+            "source_type": SourceType.TOOL_OUTPUT.value,
+            "source_id": "erp:status:1",
+            "source_authority": SourceAuthority.SIGNED_RECORD.value,
+            "raw_or_redacted_content": "ERP status record 1 is active.",
+            "proposed_memory": "ERP status record 1 is active.",
+            "operation": "upsert",
+            "target_namespace": "finance",
+            "metadata": {
+                "state_subject": "tenant:demo:finance:1",
+                "state_predicate": "status",
+                "state_object": "active",
+            },
+        }
+    )
+    monkeypatch.setattr(sys, "stdin", StringIO(json.dumps(event.to_dict()) + "\n"))
+
+    assert main(["watch", "--stdin", "--json"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["record_type"] == "event"
+    assert payload["event"]["event_id"] == event.event_id

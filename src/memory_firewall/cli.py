@@ -17,6 +17,12 @@ from .detectors import default_detector_pack, run_detectors
 from .doctor import doctor_report
 from .models import MemoryEvent
 from .policy import DISPOSITION_ORDER, SEVERITY_ORDER, PolicyConfig
+from .scan import (
+    SCAN_VERSION,
+    exit_code_for_summary,
+    scan_jsonl_events,
+    watch_stdin_events,
+)
 from .schema import (
     adapter_capability_report_schema,
     detector_pack_schema,
@@ -25,6 +31,7 @@ from .schema import (
     event_schema,
     finding_schema,
     policy_schema,
+    scan_result_schema,
     schema_bundle,
     state_analysis_schema,
     state_assertion_schema,
@@ -63,6 +70,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "detector-result",
             "state-assertion",
             "state-analysis",
+            "scan-result",
             "bundle",
         ),
         help="Schema to print.",
@@ -106,6 +114,47 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     analyze_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    scan_parser = subparsers.add_parser(
+        "scan",
+        help="Scan a JSONL file of MemoryEvent records.",
+    )
+    scan_parser.add_argument(
+        "path",
+        help="Path to a line-delimited MemoryEvent JSON file.",
+    )
+    scan_parser.add_argument(
+        "--existing-assertions",
+        help=(
+            "Optional path to a JSON array of MemoryStateAssertion records to "
+            "seed scan-local contradiction checks."
+        ),
+    )
+    scan_parser.add_argument("--json", action="store_true", dest="as_json")
+    scan_parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Omit per-event records from JSON output and terminal output.",
+    )
+
+    watch_parser = subparsers.add_parser(
+        "watch",
+        help="Watch normalized MemoryEvent JSONL from stdin.",
+    )
+    watch_parser.add_argument(
+        "--stdin",
+        action="store_true",
+        required=True,
+        help="Read MemoryEvent JSONL from stdin. No live adapters are started.",
+    )
+    watch_parser.add_argument(
+        "--existing-assertions",
+        help=(
+            "Optional path to a JSON array of MemoryStateAssertion records to "
+            "seed watch-local contradiction checks."
+        ),
+    )
+    watch_parser.add_argument("--json", action="store_true", dest="as_json")
 
     conformance_parser = subparsers.add_parser(
         "conformance", help="Run adapter conformance probes."
@@ -151,6 +200,8 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = state_assertion_schema()
     elif name == "state-analysis":
         payload = state_analysis_schema()
+    elif name == "scan-result":
+        payload = scan_result_schema()
     else:
         payload = schema_bundle()
     _print_json(payload, stdout)
@@ -280,6 +331,62 @@ def _run_analyze(
     return 0
 
 
+def _run_scan(
+    path: str,
+    existing_assertions_path: str | None,
+    as_json: bool,
+    summary_only: bool,
+    stdout: TextIO,
+) -> int:
+    with Path(path).open("r", encoding="utf-8") as handle:
+        result = scan_jsonl_events(
+            handle,
+            source=path,
+            existing_assertions=_load_existing_assertions(existing_assertions_path),
+            include_events=not summary_only,
+        )
+    if as_json:
+        _print_json(result.to_dict(include_events=not summary_only), stdout)
+    else:
+        summary = result.summary
+        print(
+            f"{SCAN_VERSION}: {result.source}: "
+            f"{summary.analyzed_events}/{summary.total_lines} event(s), "
+            f"{summary.invalid_lines} invalid, "
+            f"{summary.high_risk_events} high-risk",
+            file=stdout,
+        )
+        if not summary_only:
+            for issue in result.issues:
+                print(
+                    f"- INVALID line={issue.line_number} issue={issue.issue_id}",
+                    file=stdout,
+                )
+            for event in result.events:
+                level = event.level.value.replace("_", "-").upper()
+                print(
+                    f"- {level} line={event.line_number} "
+                    f"event={event.event_id} findings={event.finding_count} "
+                    f"disposition={event.highest_disposition.value}",
+                    file=stdout,
+                )
+    return exit_code_for_summary(result.summary)
+
+
+def _run_watch(
+    existing_assertions_path: str | None,
+    as_json: bool,
+    stdin: TextIO,
+    stdout: TextIO,
+) -> int:
+    return watch_stdin_events(
+        stdin,
+        stdout,
+        as_json=as_json,
+        existing_assertions=_load_existing_assertions(existing_assertions_path),
+    )
+
+
 def _run_conformance(adapter: str, as_json: bool, stdout: TextIO) -> int:
     if adapter != "demo":
         raise ValueError(f"unsupported adapter: {adapter}")
@@ -323,6 +430,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return _run_analyze(
             str(args.event),
+            existing_assertions_path,
+            bool(args.as_json),
+            sys.stdin,
+            sys.stdout,
+        )
+    if args.command == "scan":
+        existing_assertions_path = (
+            None
+            if args.existing_assertions is None
+            else str(args.existing_assertions)
+        )
+        return _run_scan(
+            str(args.path),
+            existing_assertions_path,
+            bool(args.as_json),
+            bool(args.summary_only),
+            sys.stdout,
+        )
+    if args.command == "watch":
+        existing_assertions_path = (
+            None
+            if args.existing_assertions is None
+            else str(args.existing_assertions)
+        )
+        return _run_watch(
             existing_assertions_path,
             bool(args.as_json),
             sys.stdin,
