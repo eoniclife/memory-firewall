@@ -83,9 +83,9 @@ def test_finding_schema_uses_frozen_risk_taxonomy() -> None:
 def test_schema_bundle_includes_claim_budget() -> None:
     bundle = schema_bundle()
     budget = claim_budget()
-    assert bundle["schema_version"] == "mf-10"
+    assert bundle["schema_version"] == "mf-11"
     assert bundle["claim_budget"]["allowed"] == list(budget.allowed)
-    assert any("Does not scan real stores" in item for item in budget.not_allowed)
+    assert any("broadly scan real stores" in item for item in budget.not_allowed)
     assert any("not a benchmark" in item for item in budget.not_allowed)
     assert "adapter_capability_report_schema" in bundle
     assert "policy_schema" in bundle
@@ -101,6 +101,7 @@ def test_schema_bundle_includes_claim_budget() -> None:
     assert "reference_proxy_result_schema" in bundle
     assert "report_result_schema" in bundle
     assert "redacted_report_export_schema" in bundle
+    assert "hermes_status_schema" in bundle
     assert bundle["default_detector_pack"]["version"] == "mf-04"
 
 

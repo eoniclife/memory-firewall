@@ -9,6 +9,7 @@ from .analysis import ANALYSIS_VERSION, TrustedStateAction
 from .claim_budget import claim_budget
 from .detectors import DETECTOR_PACK_NAME, DETECTOR_PACK_VERSION, default_detector_pack
 from .demo import POISON_DEMO_VERSION
+from .hermes import HERMES_DEFAULT_MODE, HERMES_INTEGRATION_VERSION
 from .models import (
     EvidenceField,
     MAX_METADATA_ENTRIES,
@@ -38,7 +39,7 @@ from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-10"
+SCHEMA_VERSION = "mf-11"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -1506,6 +1507,53 @@ def redacted_report_export_schema() -> dict[str, Any]:
     }
 
 
+def hermes_status_schema() -> dict[str, Any]:
+    """Return the Hermes hook alpha status JSON schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-status.mf-11.json",
+        "title": "HermesStatus",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "integration_version",
+            "state_dir",
+            "total_observations",
+            "high_risk_observations",
+            "warn_observations",
+            "pass_observations",
+            "blocked_by_firewall",
+            "latest_recorded_at",
+            "mode",
+            "observe_only",
+            "production_enforcement",
+        ],
+        "properties": {
+            "integration_version": {"const": HERMES_INTEGRATION_VERSION},
+            "state_dir": {"type": "string", "minLength": 1},
+            "total_observations": {"type": "integer", "minimum": 0},
+            "high_risk_observations": {"type": "integer", "minimum": 0},
+            "warn_observations": {"type": "integer", "minimum": 0},
+            "pass_observations": {"type": "integer", "minimum": 0},
+            "blocked_by_firewall": {"type": "integer", "minimum": 0},
+            "latest_recorded_at": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": RFC3339_TIMESTAMP_PATTERN,
+                    },
+                    {"type": "null"},
+                ],
+            },
+            "mode": {"const": HERMES_DEFAULT_MODE},
+            "observe_only": {"const": True},
+            "production_enforcement": {"const": False},
+        },
+    }
+
+
 def schema_bundle() -> dict[str, Any]:
     """Return the complete public contract bundle."""
 
@@ -1530,6 +1578,7 @@ def schema_bundle() -> dict[str, Any]:
         "reference_proxy_result_schema": reference_proxy_result_schema(),
         "report_result_schema": report_result_schema(),
         "redacted_report_export_schema": redacted_report_export_schema(),
+        "hermes_status_schema": hermes_status_schema(),
         "default_detector_pack": default_detector_pack().to_dict(),
         "risk_taxonomy": [item.to_dict() for item in risk_taxonomy()],
         "claim_budget": claim_budget().to_dict(),

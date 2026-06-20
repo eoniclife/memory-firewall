@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memory-firewall"
-version = "0.1.0.dev10"
+version = "0.1.0.dev11"
 description = "Local-first contracts and deterministic integrity checks for persistent agent memory."
 readme = "README.md"
 license = "Apache-2.0"
@@ -52,6 +52,9 @@ Source = "https://github.com/eoniclife/memory-firewall"
 
 [project.scripts]
 memory-firewall = "memory_firewall.cli:main"
+
+[project.entry-points."hermes_agent.plugins"]
+memory-firewall = "memory_firewall.hermes_plugin"
 
 [tool.setuptools]
 include-package-data = true

@@ -14,8 +14,8 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository is in MF-10: local static report and release-readiness over the
-existing poisoning demo and reference proxy surfaces.
+This repository is in MF-11: a first observe-only Hermes hook alpha over the
+existing Memory Firewall scan/detector/report surfaces.
 
 Implemented now:
 
@@ -36,23 +36,27 @@ Implemented now:
 - deterministic local poisoning demo over a toy last-write-wins memory store;
 - custom SQLite reference proxy for local observe, overlay, and enforce demos;
 - local static integrity report with default redacted share export;
+- observe-only Hermes hook helpers for high-signal memory write attempts;
+- a Hermes plugin entry point for `pre_tool_call`, `post_tool_call`, and
+  `post_llm_call`;
+- local Hermes diagnostics JSONL and `memory-firewall hermes status`;
 - adapter capability report model and schema;
 - a built-in fake adapter conformance probe;
-- machine-readable event/finding/detector/state-analysis/scan/review/demo/proxy/report
-  schemas;
+- machine-readable event/finding/detector/state-analysis/scan/review/demo/proxy/report/Hermes
+  status schemas;
 - risk taxonomy and claim budget;
 - CLI commands for `doctor`, `schema`, `risks`, `claims`, `policy`, `detect`,
-  `analyze`, `scan`, `watch`, `review`, `demo`, `proxy`, `report`, and
+  `analyze`, `scan`, `watch`, `review`, `demo`, `proxy`, `report`, `hermes`, and
   `conformance`;
 - CI, package metadata, and review packet.
 
 Not implemented yet:
 
-- real memory-store scanning;
+- broad real memory-store scanning;
 - real framework quarantine or adapter write suppression;
 - trusted ledger writes;
 - hosted HTML reports;
-- framework adapters;
+- framework adapters beyond the Hermes observe-only hook alpha;
 - enforce mode outside the built-in reference substrate.
 
 ## Install For Development
@@ -74,6 +78,7 @@ uv run --python 3.12 --extra dev memory-firewall schema demo-result
 uv run --python 3.12 --extra dev memory-firewall schema reference-proxy-result
 uv run --python 3.12 --extra dev memory-firewall schema report-result
 uv run --python 3.12 --extra dev memory-firewall schema redacted-report-export
+uv run --python 3.12 --extra dev memory-firewall schema hermes-status
 uv run --python 3.12 --extra dev memory-firewall risks
 uv run --python 3.12 --extra dev memory-firewall claims
 uv run --python 3.12 --extra dev memory-firewall policy --json
@@ -91,8 +96,30 @@ uv run --python 3.12 --extra dev memory-firewall proxy reference --mode observe 
 uv run --python 3.12 --extra dev memory-firewall proxy reference --mode overlay --json
 uv run --python 3.12 --extra dev memory-firewall proxy reference --mode enforce --json
 uv run --python 3.12 --extra dev memory-firewall report demo --out ./memory-integrity-report --json
+uv run --python 3.12 --extra dev memory-firewall hermes status --json
 uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 ```
+
+## Hermes Hook Alpha
+
+The MF-11 Hermes integration is observe-only. Install the package into the same
+Python environment that runs Hermes, enable the `memory-firewall` plugin in
+Hermes, then start a fresh Hermes session.
+
+```bash
+python -m pip install -e .
+hermes plugins enable memory-firewall
+memory-firewall hermes status --json
+```
+
+By default the plugin records only high-signal memory write tool attempts.
+Diagnostics are local JSONL files under `~/.hermes/memory-firewall/`, unless
+`MEMORY_FIREWALL_HERMES_DIR` points somewhere else. The diagnostics directory
+is created or tightened to user-only permissions, and `events.jsonl` /
+`observations.jsonl` are created or tightened to owner-read/write permissions.
+Set
+`MEMORY_FIREWALL_HERMES_SCAN_TURNS=1` only if you want noisy turn-level
+observations for implicit memory-provider writes.
 
 ## Product Boundary
 
@@ -101,15 +128,15 @@ objective truth, secure an entire agent, stop every poisoning attack, or
 automatically approve important memories.
 
 The broader public launch target is an installable local artifact for inspecting
-and explaining integrity risks in persistent agent memory. MF-10 still does not
-connect to real stores or frameworks. It can run deterministic heuristic detectors and
-state-analysis over caller-supplied normalized `MemoryEvent` JSON or JSONL
-streams, carry scan-local assertion context to surface contradictions, and emit
-structured PASS/WARN/HIGH-RISK output. Scan-local context is bounded and seeded
-only by clean, review-eligible events; it is not trusted state. Those findings
-and analysis results are signals for reducer review, not proof of objective
-truth, adversarial intent, or universal poisoning detection. Enforcement claims
-are allowed only where Memory Firewall controls the relevant read/write
+and explaining integrity risks in persistent agent memory. It can run
+deterministic heuristic detectors and state-analysis over caller-supplied
+normalized `MemoryEvent` JSON or JSONL streams, carry scan-local assertion
+context to surface contradictions, and emit structured PASS/WARN/HIGH-RISK
+output. Scan-local context is bounded and seeded only by clean,
+review-eligible events; it is not trusted state. Those findings and analysis
+results are signals for reducer review, not proof of objective truth,
+adversarial intent, or universal poisoning detection. Enforcement claims are
+allowed only where Memory Firewall controls the relevant read/write
 chokepoint.
 
 MF-07 adds a local review queue over high-risk scan events. Review decisions
@@ -143,6 +170,17 @@ state-object answer values, event IDs, source IDs, review item IDs, and receipt
 IDs by default. The HTML report is local only; this does not add a hosted
 dashboard, telemetry service, auth, billing, real adapter support, or a release
 publish step.
+
+MF-11 adds an observe-only Hermes hook alpha. The package exposes a
+`hermes_agent.plugins` entry point named `memory-firewall` and hook handlers
+that can observe high-signal Hermes memory write attempts, normalize them into
+`MemoryEvent` records, run local scan/detector policy, and append local JSONL
+diagnostics with user-only local file permissions. `memory-firewall hermes
+status --json` summarizes those local observations without printing raw event
+content. Turn-level scanning for implicit memory providers is opt-in via
+`MEMORY_FIREWALL_HERMES_SCAN_TURNS=1`. MF-11 does not replace the active Hermes
+memory provider, suppress Mem0/Honcho/GBrain writes, inject trusted context,
+write a trusted ledger, or provide production enforcement.
 
 ## Relationship To Agent Memory Contracts
 
