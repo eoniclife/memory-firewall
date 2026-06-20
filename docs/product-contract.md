@@ -1,8 +1,9 @@
 # Memory Firewall Product Contract
 
-MF-06 adds finite JSONL scan and stdin watch over normalized `MemoryEvent`
-streams while keeping real memory-store scanning, adapter, quarantine,
-trusted-read, and enforcement claims out of scope.
+MF-07 adds a local review queue, deterministic allow/reject receipts, and a
+trusted-read preview over allowed review items while keeping real memory-store
+scanning, framework adapters, trusted ledger writes, and enforcement claims out
+of scope.
 
 ## Category Line
 
@@ -20,7 +21,8 @@ agent-memory-contracts
 
 memory-firewall
     Public contract, detector pack, AMC candidate/evidence preview, normalized
-    event-stream scan/watch, conformance probe, and CLI shell for the future
+    event-stream scan/watch, local review queue, override receipts, trusted-read
+    preview, conformance probe, and CLI shell for the future
     inspection/demo/reference guardrail
 
 private orchestration layer
@@ -28,7 +30,7 @@ private orchestration layer
     this public repository
 ```
 
-## MF-06 Allows
+## MF-07 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -63,12 +65,19 @@ private orchestration layer
   - `1`: completed with at least one high-risk event;
   - `2`: one or more invalid input lines were found;
   - `130`: watch was interrupted before clean EOF;
+- a local file-backed review queue for high-risk scan events;
+- deterministic review item ids and item hashes;
+- explicit allow/reject decisions with required reasons;
+- deterministic override receipts for local review decisions;
+- idempotent repeated decisions when the same receipt material is supplied;
+- a local trusted-read preview over allowed, receipted review items;
+- exclusion of rejected review items from trusted-read preview items;
 - machine-readable adapter capability reports;
 - a conformance probe over the built-in fake adapter;
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-06 Does Not Allow
+## MF-07 Does Not Allow
 
 - real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -78,8 +87,9 @@ private orchestration layer
   decision;
 - automatic approval by an LLM;
 - trusted ledger writes or reducer decisions;
-- quarantine claims;
-- trusted-read claims;
+- claims that local review queue storage is enforced quarantine;
+- claims that trusted-read preview is a trusted ledger, reducer decision, or
+  production read broker;
 - real framework adapter claims;
 - enforcement claims;
 - claims that Memory Firewall determines objective truth;
@@ -95,8 +105,8 @@ The `operation` enum is contract vocabulary for adapter/event producers:
 - `delete`
 - `import`
 
-These values describe the proposed memory operation. They do not mean MF-05 can
-execute, block, import from a framework, or enforce that operation.
+These values describe the proposed memory operation. They do not mean Memory
+Firewall can execute, block, import from a framework, or enforce that operation.
 
 ## Canonical Event Surface
 
@@ -229,7 +239,7 @@ approve memory.
 
 ## Scan And Watch Surface
 
-MF-06 adds:
+MF-06 added:
 
 - `memory-firewall scan <events.jsonl>`;
 - `memory-firewall scan <events.jsonl> --json`;
@@ -254,8 +264,35 @@ reducer decision. JSON output includes event records unless `--summary-only` is
 used. Invalid input lines emit structured issues with generic error messages and
 no raw line echo.
 
-Watch mode is stdin-only in MF-06. It emits one terminal or JSONL result per
+Watch mode remains stdin-only. It emits one terminal or JSONL result per
 input line and handles `KeyboardInterrupt` without a traceback.
+
+## Review Queue And Trusted-Read Preview Surface
+
+MF-07 adds:
+
+- `memory-firewall review enqueue <events.jsonl> --queue <queue.json>`;
+- `memory-firewall review list --queue <queue.json>`;
+- `memory-firewall review allow --queue <queue.json> --item-id <id> --reason <text>`;
+- `memory-firewall review reject --queue <queue.json> --item-id <id> --reason <text>`;
+- `memory-firewall review trusted-read-preview --queue <queue.json>`.
+
+`review enqueue` runs the scan path and persists only high-risk scan
+events as pending local review items. Clean pass events are skipped. Invalid
+input lines remain scan issues; they are not converted into trusted-read preview
+items.
+
+Review items store candidate assertion material, state-analysis action,
+finding summaries, ids, counts, and hashes. They do not store raw invalid JSONL
+lines or full detector evidence quotes. Allow/reject requires a non-empty
+reason and writes a deterministic local receipt. Supplying the same decision
+material again is idempotent; conflicting later decisions are rejected.
+
+The trusted-read preview includes only allowed, receipted review items. It is a
+local preview of assertions the operator has explicitly allowed. It does not
+write trusted state, call `MemoryGate.promote`, suppress native writes, connect
+to an adapter, or prove that the assertion is objectively true. Rejected and
+pending items are excluded from preview items.
 
 ## Adapter Capability Surface
 
@@ -299,8 +336,8 @@ Disposition describes the recommended handling:
 - `review`
 - `quarantine`
 
-`quarantine` is only an advisory disposition value in MF-06. This sprint does
-not implement quarantine storage or enforcement.
+`quarantine` is only an advisory disposition value. MF-07 implements local
+review-queue storage, not quarantine enforcement or adapter suppression.
 
 Use `poisoned` only for attack demos or confirmed adversarial cases. Normal
 findings should distinguish severity from disposition according to the actual
