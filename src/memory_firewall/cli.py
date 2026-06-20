@@ -17,6 +17,7 @@ from .detectors import default_detector_pack, run_detectors
 from .demo import run_poison_demo
 from .doctor import doctor_report
 from .hermes import (
+    check_hermes_setup,
     install_hermes_plugin_shim,
     recent_hermes_observations,
     summarize_hermes_observations,
@@ -48,6 +49,7 @@ from .schema import (
     evidence_span_schema,
     event_schema,
     finding_schema,
+    hermes_checkup_schema,
     hermes_observations_schema,
     hermes_status_schema,
     override_receipt_schema,
@@ -114,6 +116,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "reference-proxy-result",
             "report-result",
             "redacted-report-export",
+            "hermes-checkup",
             "hermes-status",
             "hermes-observations",
             "bundle",
@@ -380,6 +383,30 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="as_json",
     )
+    hermes_checkup_parser = hermes_subparsers.add_parser(
+        "checkup",
+        help="Verify the local Hermes adapter setup and diagnostics path.",
+    )
+    hermes_checkup_parser.add_argument(
+        "--hermes-home",
+        help="Hermes home directory. Defaults to HERMES_HOME or ~/.hermes.",
+    )
+    hermes_checkup_parser.add_argument(
+        "--state-dir",
+        help="Directory containing Hermes Memory Firewall JSONL diagnostics.",
+    )
+    hermes_checkup_parser.add_argument(
+        "--limit",
+        type=_positive_int,
+        default=5,
+        help="Maximum number of recent observations to include.",
+    )
+    hermes_checkup_parser.add_argument(
+        "--write-sample",
+        action="store_true",
+        help="Write one synthetic local observation to prove the readout path.",
+    )
+    hermes_checkup_parser.add_argument("--json", action="store_true", dest="as_json")
     hermes_install_parser = hermes_subparsers.add_parser(
         "install-plugin",
         help="Install the Hermes user-plugin shim for current Hermes CLI discovery.",
@@ -445,6 +472,8 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = report_result_schema()
     elif name == "redacted-report-export":
         payload = redacted_report_export_schema()
+    elif name == "hermes-checkup":
+        payload = hermes_checkup_schema()
     elif name == "hermes-status":
         payload = hermes_status_schema()
     elif name == "hermes-observations":
@@ -914,6 +943,46 @@ def _run_hermes_observations(
     return 1 if has_high_risk else 0
 
 
+def _run_hermes_checkup(
+    hermes_home: str | None,
+    state_dir: str | None,
+    limit: int,
+    write_sample: bool,
+    as_json: bool,
+    stdout: TextIO,
+) -> int:
+    result = check_hermes_setup(
+        hermes_home=hermes_home,
+        state_dir=state_dir,
+        limit=limit,
+        write_sample=write_sample,
+    )
+    if as_json:
+        _print_json(result.to_dict(), stdout)
+    else:
+        print(f"{result.integration_version}: Hermes checkup", file=stdout)
+        print(f"- overall: {result.overall_status}", file=stdout)
+        print(f"- Hermes home: {result.hermes_home}", file=stdout)
+        print(f"- plugin shim: {result.plugin_dir}", file=stdout)
+        print(
+            f"- config lists plugin: {result.config_mentions_plugin}",
+            file=stdout,
+        )
+        print(f"- state dir: {result.state_dir}", file=stdout)
+        print(f"- observations: {result.status.total_observations}", file=stdout)
+        print(f"- high-risk: {result.status.high_risk_observations}", file=stdout)
+        print(f"- sample written: {result.sample_written}", file=stdout)
+        print("- checks:", file=stdout)
+        for check in result.checks:
+            print(f"  - {check.status}: {check.name} - {check.message}", file=stdout)
+        if result.next_steps:
+            print("- next steps:", file=stdout)
+            for step in result.next_steps:
+                print(f"  - {step}", file=stdout)
+        print("- observe-only: true", file=stdout)
+    return 0 if result.overall_status == "ready" else 1
+
+
 def _run_hermes_install_plugin(
     hermes_home: str | None,
     force: bool,
@@ -1067,6 +1136,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_hermes_observations(
                 state_dir,
                 int(args.limit),
+                bool(args.as_json),
+                sys.stdout,
+            )
+        if hermes_command == "checkup":
+            hermes_home = None if args.hermes_home is None else str(args.hermes_home)
+            state_dir = None if args.state_dir is None else str(args.state_dir)
+            return _run_hermes_checkup(
+                hermes_home,
+                state_dir,
+                int(args.limit),
+                bool(args.write_sample),
                 bool(args.as_json),
                 sys.stdout,
             )
