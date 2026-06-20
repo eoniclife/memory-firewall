@@ -17,7 +17,7 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["package"] == "memory-firewall"
-    assert payload["schema_version"] == "mf-09"
+    assert payload["schema_version"] == "mf-10"
 
 
 def test_adapter_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
@@ -104,6 +104,20 @@ def test_reference_proxy_schema_command_prints_json(capsys) -> None:  # type: ig
     assert payload["title"] == "ReferenceProxyResult"
 
 
+def test_report_result_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "report-result"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "ReportResult"
+
+
+def test_redacted_report_export_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "redacted-report-export"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "RedactedReportExport"
+
+
 def test_demo_poison_json_command(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["demo", "poison", "--json"]) == 0
     captured = capsys.readouterr()
@@ -126,6 +140,30 @@ def test_proxy_reference_json_command(capsys) -> None:  # type: ignore[no-untype
     assert payload["outcome"]["native_answer"] == "Helio"
     assert payload["outcome"]["governed_context_answer"] == "Helio"
     assert len(payload["outcome"]["suppressed_native_event_ids"]) == 1
+
+
+def test_report_demo_json_command_writes_local_bundle(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    output_dir = tmp_path / "report"
+
+    assert main(["report", "demo", "--out", str(output_dir), "--json"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    encoded_share = (output_dir / "redacted-share.json").read_text(encoding="utf-8")
+
+    encoded_stdout = json.dumps(payload, sort_keys=True)
+
+    assert payload["report_version"] == "mf-10"
+    assert payload["summary"]["high_risk_events"] == 1
+    assert payload["summary"]["suppressed_native_writes"] == 1
+    assert (output_dir / "report.json").exists()
+    assert (output_dir / "index.html").exists()
+    assert (output_dir / "redacted-share.json").exists()
+    assert "Helio" not in encoded_stdout
+    assert "Mirage" not in encoded_stdout
+    assert "mfev_v1_" not in encoded_stdout
+    assert "Helio" not in encoded_share
+    assert "Mirage" not in encoded_share
+    assert "mfev_v1_" not in encoded_share
 
 
 def test_risks_json_command(capsys) -> None:  # type: ignore[no-untyped-def]

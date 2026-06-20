@@ -1,9 +1,9 @@
 # Memory Firewall Product Contract
 
-MF-09 adds a custom SQLite reference proxy with explicit observe, overlay, and
-enforce behavior over a controlled local substrate while keeping real
-memory-store scanning, framework adapters, trusted ledger writes, and production
-enforcement claims out of scope.
+MF-10 adds a local static integrity report and default redacted share export
+over the existing poisoning demo and reference proxy surfaces while keeping real
+memory-store scanning, framework adapters, trusted ledger writes, hosted
+dashboards, and production enforcement claims out of scope.
 
 ## Category Line
 
@@ -22,15 +22,16 @@ agent-memory-contracts
 memory-firewall
     Public contract, detector pack, AMC candidate/evidence preview, normalized
     event-stream scan/watch, local review queue, override receipts, trusted-read
-    preview, poisoning demo, reference proxy, conformance probe, and CLI shell
-    for the future inspection/demo/reference guardrail
+    preview, poisoning demo, reference proxy, local static report, redacted
+    share export, conformance probe, and CLI shell for the future
+    inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-09 Allows
+## MF-10 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -84,12 +85,20 @@ private orchestration layer
 - enforce mode that suppresses high-risk writes only inside the reference
   SQLite store;
 - a machine-readable `reference-proxy-result` schema;
+- a local static integrity report over the demo/proxy surfaces;
+- `memory-firewall report demo --out <dir> --json`;
+- report files `report.json`, `index.html`, and `redacted-share.json`;
+- redacted share export that omits raw content, state-object answer values,
+  event IDs, source IDs, review item IDs, and receipt IDs by default;
+- machine-readable `report-result` and `redacted-report-export` schemas;
+- issue templates for adapter requests, false positives, detector suggestions,
+  and redacted report feedback;
 - machine-readable adapter capability reports;
 - a conformance probe over the built-in fake adapter;
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-09 Does Not Allow
+## MF-10 Does Not Allow
 
 - real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -108,6 +117,12 @@ private orchestration layer
   Zep, vector-store, or production framework support;
 - claims that reference enforce mode secures native memory outside the
   controlled SQLite substrate;
+- claims that the local report is a hosted dashboard, telemetry service, auth
+  system, billing system, or server process;
+- raw-content sharing by default;
+- claims that redacted report export is a raw trace export;
+- release tag, PyPI publish, or external launch execution without a separate
+  verified release gate;
 - real framework adapter claims;
 - production enforcement claims;
 - claims that Memory Firewall determines objective truth;
@@ -370,6 +385,32 @@ Firewall can suppress writes in Mem0, Letta, Zep, Hermes, GBrain, LangChain,
 SQLite databases it does not control, vector stores, or any other real memory
 framework.
 
+## Local Report Surface
+
+MF-10 adds:
+
+- `memory-firewall report demo --out <dir>`;
+- `memory-firewall report demo --out <dir> --json`;
+- `memory-firewall schema report-result`;
+- `memory-firewall schema redacted-report-export`.
+
+The demo report composes the deterministic poisoning demo and the reference
+proxy observe/overlay/enforce outcomes. It writes:
+
+- `report.json`: local structured report;
+- `index.html`: self-contained local HTML report;
+- `redacted-share.json`: default share-safe export.
+
+The redacted export is the artifact users should paste into issues. It omits
+raw content, proposed memory, event IDs, source IDs, state-object answer values,
+review item IDs, and receipt IDs by default. It keeps aggregate counts, risk
+categories, mode names, and capability boundaries so feedback is useful without
+sharing raw traces.
+
+The HTML report is local only. MF-10 does not start a hosted dashboard, server,
+auth flow, billing flow, telemetry service, or production release workflow.
+Actual tag or publish execution requires a separate verified gate.
+
 ## Adapter Capability Surface
 
 The adapter capability report contains:
@@ -412,8 +453,8 @@ Disposition describes the recommended handling:
 - `review`
 - `quarantine`
 
-`quarantine` is only an advisory disposition value. MF-09 implements local
-review-queue storage and a reference-store enforce demo, not production
+`quarantine` is only an advisory disposition value. MF-10 implements local
+review-queue storage, a reference-store enforce demo, and local reports, not production
 framework quarantine or adapter suppression.
 
 Use `poisoned` only for attack demos or confirmed adversarial cases. Normal

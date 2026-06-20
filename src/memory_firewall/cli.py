@@ -19,6 +19,7 @@ from .doctor import doctor_report
 from .models import MemoryEvent
 from .policy import DISPOSITION_ORDER, SEVERITY_ORDER, PolicyConfig
 from .proxy import ProxyMode, run_reference_proxy
+from .report import generate_demo_report, write_report_bundle
 from .review import (
     ReviewQueue,
     allow_review_item,
@@ -45,6 +46,8 @@ from .schema import (
     override_receipt_schema,
     policy_schema,
     reference_proxy_result_schema,
+    redacted_report_export_schema,
+    report_result_schema,
     review_queue_schema,
     scan_result_schema,
     schema_bundle,
@@ -92,6 +95,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "trusted-read-preview",
             "demo-result",
             "reference-proxy-result",
+            "report-result",
+            "redacted-report-export",
             "bundle",
         ),
         help="Schema to print.",
@@ -301,6 +306,25 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     reference_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    report_parser = subparsers.add_parser(
+        "report",
+        help="Generate local static reports.",
+    )
+    report_subparsers = report_parser.add_subparsers(
+        dest="report_command",
+        required=True,
+    )
+    report_demo_parser = report_subparsers.add_parser(
+        "demo",
+        help="Write the deterministic demo report bundle.",
+    )
+    report_demo_parser.add_argument(
+        "--out",
+        required=True,
+        help="Directory for report.json, index.html, and redacted-share.json.",
+    )
+    report_demo_parser.add_argument("--json", action="store_true", dest="as_json")
+
     return parser
 
 
@@ -347,6 +371,10 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = demo_result_schema()
     elif name == "reference-proxy-result":
         payload = reference_proxy_result_schema()
+    elif name == "report-result":
+        payload = report_result_schema()
+    elif name == "redacted-report-export":
+        payload = redacted_report_export_schema()
     else:
         payload = schema_bundle()
     _print_json(payload, stdout)
@@ -735,6 +763,24 @@ def _run_proxy_reference(mode: str, as_json: bool, stdout: TextIO) -> int:
     return 0
 
 
+def _run_report_demo(output_dir: str, as_json: bool, stdout: TextIO) -> int:
+    report = generate_demo_report()
+    bundle = write_report_bundle(report, output_dir)
+    if as_json:
+        _print_json(bundle.to_dict(), stdout)
+    else:
+        print(f"{report.report_version}: {report.title}", file=stdout)
+        print(f"- html: {bundle.html_path}", file=stdout)
+        print(f"- report json: {bundle.report_json_path}", file=stdout)
+        print(f"- redacted share: {bundle.redacted_export_path}", file=stdout)
+        print(
+            f"- high-risk events: {report.summary.high_risk_events}; "
+            f"suppressed native writes: {report.summary.suppressed_native_writes}",
+            file=stdout,
+        )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the Memory Firewall CLI."""
 
@@ -840,6 +886,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sys.stdout,
             )
         parser.error(f"unknown proxy command: {proxy_command}")
+    if args.command == "report":
+        report_command = str(args.report_command)
+        if report_command == "demo":
+            return _run_report_demo(
+                str(args.out),
+                bool(args.as_json),
+                sys.stdout,
+            )
+        parser.error(f"unknown report command: {report_command}")
     parser.error(f"unknown command: {args.command}")
     return 2
 

@@ -1,0 +1,40 @@
+name: Adapter request
+description: Request support for a memory framework or store.
+title: "[Adapter]: "
+labels: ["adapter-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for adapter requests. Please do not include secrets or private memory traces.
+  - type: input
+    id: framework
+    attributes:
+      label: Framework or store
+      description: Mem0, Hermes, GBrain, Letta, Zep, LangChain, Honcho, custom SQLite, or another memory system.
+    validations:
+      required: true
+  - type: textarea
+    id: write_path
+    attributes:
+      label: Memory write path
+      description: How does the agent write durable memory today?
+    validations:
+      required: true
+  - type: textarea
+    id: read_path
+    attributes:
+      label: Trusted read path
+      description: Where would a governed context channel need to inject or filter memory?
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Desired mode
+      options:
+        - observe
+        - overlay
+        - enforce
+    validations:
+      required: true
