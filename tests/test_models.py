@@ -57,6 +57,29 @@ def test_memory_event_rejects_unknown_fields() -> None:
         raise AssertionError("MemoryEvent accepted an unknown field")
 
 
+def test_memory_event_requires_metadata_field() -> None:
+    payload = {
+        "event_id": "evt_001",
+        "timestamp": "2026-06-20T14:00:00Z",
+        "actor": "agent:test",
+        "user_or_tenant_scope": "tenant:demo",
+        "source_type": "user_message",
+        "source_id": "msg_001",
+        "source_authority": "user_asserted",
+        "raw_or_redacted_content": "hello",
+        "proposed_memory": "hello",
+        "operation": "create",
+        "target_namespace": "demo",
+    }
+
+    try:
+        MemoryEvent.from_dict(payload)
+    except KeyError as exc:
+        assert exc.args == ("metadata",)
+    else:
+        raise AssertionError("MemoryEvent accepted missing metadata")
+
+
 def test_memory_event_rejects_non_string_metadata_keys() -> None:
     payload = {
         "event_id": "evt_001",
@@ -143,6 +166,28 @@ def test_memory_finding_rejects_string_limitations() -> None:
         assert "limitations" in str(exc)
     else:
         raise AssertionError("MemoryFinding accepted string limitations")
+
+
+def test_memory_finding_requires_limitations_field() -> None:
+    payload = {
+        "finding_id": "find_001",
+        "event_id": "evt_001",
+        "risk_category": "provenance_gap",
+        "severity": "suspicious",
+        "confidence": 0.4,
+        "evidence_span": "unknown source",
+        "detector_name": "demo",
+        "detector_version": "0.1.0",
+        "explanation": "The source is unknown.",
+        "recommended_disposition": "review",
+    }
+
+    try:
+        MemoryFinding.from_dict(payload)
+    except KeyError as exc:
+        assert exc.args == ("limitations",)
+    else:
+        raise AssertionError("MemoryFinding accepted missing limitations")
 
 
 def test_memory_finding_rejects_non_string_limitation_items() -> None:

@@ -111,3 +111,10 @@ Final polish after MiniMax accepted with nits:
 - mypy passed for Python `3.10`, `3.11`, and `3.12`.
 - `compileall` passed for `src` and `tests`.
 - `git diff --check` passed.
+
+Schema/parser alignment fix after independent final re-review:
+
+- Python 3.12 tests: `18` passed.
+- mypy passed for Python `3.10`, `3.11`, and `3.12`.
+- `compileall` passed for `src` and `tests`.
+- `git diff --check` passed.

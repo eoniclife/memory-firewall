@@ -183,7 +183,7 @@ class MemoryEvent:
             proposed_memory=str(value["proposed_memory"]),
             operation=MemoryOperation(str(value["operation"])),
             target_namespace=str(value["target_namespace"]),
-            metadata=_coerce_metadata(value.get("metadata", {})),
+            metadata=_coerce_metadata(value["metadata"]),
         )
 
 
@@ -228,7 +228,7 @@ class MemoryFinding:
     def from_dict(cls, value: Mapping[str, Any]) -> "MemoryFinding":
         """Build a finding from a JSON-like dictionary."""
 
-        raw_limitations = value.get("limitations", ())
+        raw_limitations = value["limitations"]
         limitations: tuple[str, ...]
         if isinstance(raw_limitations, str):
             raise TypeError("limitations must be a sequence of strings")
