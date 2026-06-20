@@ -177,7 +177,9 @@ Fix-pass response:
   metadata with `paths_redacted: true`.
 - Regression tests cover all three findings.
 
-Final exact-head review after fix-pass: pending.
+Final exact-head acceptance is a merge gate recorded in the PR conversation and
+private loop state after the final pushed head is fixed. This packet records
+the review/fix-pass chain without self-invalidating that exact-head gate.
 
 ## Residual Risks
 
