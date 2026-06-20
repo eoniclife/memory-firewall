@@ -133,7 +133,8 @@ Initial focused gates:
   - `127` passed
 - final full test suite:
   `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev pytest -q`
-  - `127` passed
+  - passed before exact-head review fix-pass; `129` tests collected after the
+    fix-pass
 - bytecode smoke:
   `uv run --python 3.12 --extra dev python -m compileall -q src tests`
 - type checks:
@@ -168,6 +169,50 @@ Initial focused gates:
   - trusted-read preview from the wheel returned one allowed preview item and
     `trusted_ledger_write = false`;
   - `uv pip check` passed.
+
+## Exact-Head Review Fix Pass
+
+Independent reviewer `Raman`
+(`019ee690-c16d-76b3-86d0-14083c4d114c`) reviewed exact head
+`51fa9ef6b099712aa8b21a28ddb77a7949f192e2` and requested changes.
+
+Blocking finding:
+
+- override receipts in a file-backed queue were bound to `item_id` and
+  `item_hash_sha256`, but a tampered queue could recompute a deterministic
+  receipt id with mismatched `event_id`, `assertion_id`, or `finding_ids`.
+  `ReviewQueue.from_dict(...)` accepted that contradictory receipt and
+  `trusted_read_preview(...)` could echo it.
+
+Fix-pass changes:
+
+- `ReviewQueue.__post_init__` now verifies receipt `event_id`,
+  `assertion_id`, and `finding_ids` against the referenced review item;
+- `TrustedReadPreviewItem.__post_init__` now verifies receipt `event_id` and
+  `assertion_id` against the preview assertion;
+- added regressions for tampered receipt side fields and preview receipt/event
+  mismatch.
+
+Fix-pass gates:
+
+- focused MF-07/schema/CLI tests:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-focus uv run --python 3.12 --extra dev pytest tests/test_review.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
+  - `42` passed
+- focused type checks:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-focus uv run --python 3.12 --extra dev mypy src/memory_firewall/review.py tests/test_review.py`
+  - `Success: no issues found in 2 source files`
+- full test suite:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-full uv run --python 3.12 --extra dev pytest -q`
+  - passed with `129` tests collected
+- type checks:
+  - `UV_PROJECT_ENVIRONMENT=.venv-310-mypy uv run --python 3.10 --extra dev mypy src tests`
+  - `UV_PROJECT_ENVIRONMENT=.venv-311-mypy uv run --python 3.11 --extra dev mypy src tests`
+  - `UV_PROJECT_ENVIRONMENT=.venv-312-mypy uv run --python 3.12 --extra dev mypy src tests`
+  - all reported `Success: no issues found in 26 source files`
+- bytecode smoke:
+  `UV_PROJECT_ENVIRONMENT=.venv-312-compile uv run --python 3.12 --extra dev python -m compileall -q src tests`
+- whitespace check:
+  `git diff --check`
 
 ## Residual Risks
 

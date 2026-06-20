@@ -7,11 +7,14 @@ from memory_firewall import (
     MemoryEvent,
     MemoryOperation,
     OverrideDecision,
+    OverrideReceipt,
     ReviewItemStatus,
+    ReviewQueue,
     ScanResult,
     SourceAuthority,
     SourceType,
     allow_review_item,
+    compute_override_receipt_id,
     enqueue_scan_result,
     override_receipt_schema,
     reject_review_item,
@@ -152,6 +155,54 @@ def test_repeated_same_decision_is_idempotent_and_conflict_is_rejected() -> None
             item_id,
             reason="changed my mind",
             reviewer="aditya",
+        )
+
+
+def test_review_queue_rejects_receipt_side_field_tampering() -> None:
+    queue = enqueue_scan_result(_contradiction_scan())
+    item_id = queue.items[0].item_id
+    allowed = allow_review_item(
+        queue,
+        item_id,
+        reason="verified locally",
+        reviewer="aditya",
+    )
+    payload = allowed.to_dict()
+    receipt_payload = dict(payload["receipts"][0])
+    receipt_payload["event_id"] = "mfev_v1_00000000000000000000000000000000"
+    receipt_payload["assertion_id"] = "mfassert_v1_00000000000000000000000000000000"
+    receipt_payload["finding_ids"] = ["mffind_v1_tampered"]
+    receipt_payload["receipt_id"] = compute_override_receipt_id(receipt_payload)
+    payload["receipts"][0] = receipt_payload
+    payload["items"][0]["receipt_id"] = receipt_payload["receipt_id"]
+
+    with pytest.raises(ValueError, match="receipt event_id must match review item"):
+        ReviewQueue.from_dict(payload)
+
+
+def test_trusted_read_preview_item_rejects_receipt_event_mismatch() -> None:
+    queue = enqueue_scan_result(_contradiction_scan())
+    item_id = queue.items[0].item_id
+    allowed = allow_review_item(
+        queue,
+        item_id,
+        reason="verified locally",
+        reviewer="aditya",
+    )
+    item = allowed.items[0]
+    receipt_payload = allowed.receipts[0].to_dict()
+    receipt_payload["event_id"] = "mfev_v1_00000000000000000000000000000000"
+    receipt_payload["receipt_id"] = compute_override_receipt_id(receipt_payload)
+    receipt = OverrideReceipt.from_dict(receipt_payload)
+
+    with pytest.raises(ValueError, match="receipt event_id must match event_id"):
+        from memory_firewall import TrustedReadPreviewItem
+
+        TrustedReadPreviewItem(
+            item_id=item.item_id,
+            event_id=item.event_id,
+            assertion=item.assertion,
+            receipt=receipt,
         )
 
 

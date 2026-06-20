@@ -824,6 +824,12 @@ class ReviewQueue:
                 raise ValueError("receipt item_id must match review item")
             if receipt.item_hash_sha256 != item.item_hash_sha256:
                 raise ValueError("receipt item_hash_sha256 must match review item")
+            if receipt.event_id != item.event_id:
+                raise ValueError("receipt event_id must match review item")
+            if receipt.assertion_id != item.assertion.assertion_id:
+                raise ValueError("receipt assertion_id must match review item")
+            if receipt.finding_ids != item.finding_ids:
+                raise ValueError("receipt finding_ids must match review item")
             if item.status == ReviewItemStatus.ALLOWED and receipt.decision != OverrideDecision.ALLOW:
                 raise ValueError("allowed item must reference an allow receipt")
             if item.status == ReviewItemStatus.REJECTED and receipt.decision != OverrideDecision.REJECT:
@@ -1013,6 +1019,10 @@ class TrustedReadPreviewItem:
             raise ValueError("assertion source_event_id must match event_id")
         if self.receipt.item_id != self.item_id:
             raise ValueError("receipt item_id must match item_id")
+        if self.receipt.event_id != self.event_id:
+            raise ValueError("receipt event_id must match event_id")
+        if self.receipt.assertion_id != self.assertion.assertion_id:
+            raise ValueError("receipt assertion_id must match assertion_id")
         if self.receipt.decision != OverrideDecision.ALLOW:
             raise ValueError("trusted-read preview items require allow receipts")
         if self.preview_status != TRUSTED_READ_PREVIEW_STATUS:
