@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from memory_firewall import (
     EVENT_ID_PREFIX,
     MemoryEvent,
@@ -71,6 +73,19 @@ def test_memory_event_rejects_unstable_event_id_for_conformance() -> None:
     event = MemoryEvent.from_dict(payload)
 
     assert not event.has_expected_event_id()
+
+
+def test_memory_event_metadata_is_immutable_after_id_computation() -> None:
+    event = MemoryEvent.from_adapter_payload(_event_payload_without_id())
+
+    try:
+        cast(Any, event.metadata)["new"] = "changed"
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("MemoryEvent metadata remained mutable")
+
+    assert event.has_expected_event_id()
 
 
 def test_memory_event_rejects_unknown_fields() -> None:

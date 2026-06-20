@@ -7,6 +7,7 @@ import json
 import math
 from dataclasses import dataclass, field
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Mapping, TypeVar
 
 JSONScalar = str | int | float | bool | None
@@ -144,6 +145,10 @@ def _coerce_metadata(value: Mapping[str, JSONScalar]) -> dict[str, JSONScalar]:
     return metadata
 
 
+def _freeze_metadata(value: Mapping[str, JSONScalar]) -> Mapping[str, JSONScalar]:
+    return MappingProxyType(_coerce_metadata(value))
+
+
 def _reject_unknown_fields(
     value: Mapping[str, Any], allowed: frozenset[str], label: str
 ) -> None:
@@ -273,7 +278,7 @@ class MemoryEvent:
             allow_empty=False,
             max_chars=MAX_TEXT_FIELD_CHARS,
         )
-        _coerce_metadata(self.metadata)
+        object.__setattr__(self, "metadata", _freeze_metadata(self.metadata))
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable dictionary."""

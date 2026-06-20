@@ -24,6 +24,23 @@ def _enum_values(enum_type: type[Any]) -> list[str]:
     return [item.value for item in enum_type]
 
 
+def _capability_disjointness_constraints() -> list[dict[str, Any]]:
+    return [
+        {
+            "not": {
+                "required": ["supported_capabilities", "unsupported_capabilities"],
+                "properties": {
+                    "supported_capabilities": {"contains": {"const": capability.value}},
+                    "unsupported_capabilities": {
+                        "contains": {"const": capability.value}
+                    },
+                },
+            }
+        }
+        for capability in AdapterCapability
+    ]
+
+
 def event_schema() -> dict[str, Any]:
     """Return the canonical MemoryEvent JSON schema."""
 
@@ -138,6 +155,7 @@ def adapter_capability_report_schema() -> dict[str, Any]:
         "title": "AdapterCapabilityReport",
         "type": "object",
         "additionalProperties": False,
+        "allOf": _capability_disjointness_constraints(),
         "required": [
             "adapter_name",
             "adapter_version",

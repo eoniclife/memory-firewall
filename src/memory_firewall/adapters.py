@@ -14,6 +14,7 @@ from .models import (
     SourceAuthority,
     SourceType,
     _coerce_metadata,
+    _freeze_metadata,
     _reject_unknown_fields,
     _require_string,
 )
@@ -125,7 +126,7 @@ class AdapterCapabilityReport:
         object.__setattr__(self, "supported_capabilities", supported)
         object.__setattr__(self, "unsupported_capabilities", unsupported)
         object.__setattr__(self, "notes", _coerce_notes(self.notes))
-        object.__setattr__(self, "metadata", _coerce_metadata(self.metadata))
+        object.__setattr__(self, "metadata", _freeze_metadata(self.metadata))
 
     def supports(self, capability: AdapterCapability) -> bool:
         """Return whether this report declares a capability as supported."""

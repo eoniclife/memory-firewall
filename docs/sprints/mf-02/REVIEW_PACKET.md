@@ -96,3 +96,18 @@ Passed on branch `codex/mf-02-adapter-contract` before draft PR creation:
 - `twine check` passed for both artifacts.
 - Installed-wheel smoke passed with `pip check`, `schema adapter`, and
   `conformance demo --json`.
+
+Fix pass after independent Codex reviewer requested changes on exact head
+`f774ddc2ff35322b695982805084014ba8724aea`:
+
+- Fixed mutable `MemoryEvent.metadata` by freezing validated metadata after
+  construction; added regression coverage that mutation is rejected and the
+  deterministic event id remains valid.
+- Fixed schema/model parity for adapter capability reports by adding
+  schema-level supported/unsupported disjointness constraints; added regression
+  coverage that overlapping capabilities fail JSON Schema validation.
+- Python 3.12 tests: `33` passed.
+- mypy passed for Python `3.10`, `3.11`, and `3.12`.
+- `compileall`, `doctor --json`, `schema bundle`, `conformance demo --json`,
+  `git diff --check`, build, twine, installed-wheel `pip check`, `schema
+  adapter`, and `conformance demo --json` all passed.

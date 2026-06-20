@@ -82,3 +82,14 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     Draft202012Validator(adapter_capability_report_schema()).validate(
         demo_memory_adapter().capability_report.to_dict()
     )
+
+
+def test_adapter_schema_rejects_supported_and_unsupported_overlap() -> None:
+    payload = demo_memory_adapter().capability_report.to_dict()
+    payload["unsupported_capabilities"].append("emit_memory_events")
+
+    errors = list(
+        Draft202012Validator(adapter_capability_report_schema()).iter_errors(payload)
+    )
+
+    assert errors
