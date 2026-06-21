@@ -20,13 +20,16 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["package"] == "memory-firewall"
-    assert payload["schema_version"] == "mf-22"
+    assert payload["schema_version"] == "mf-23"
     assert payload["adapter_bridge_observe_result_schema"][
         "title"
     ] == "AdapterBridgeObserveResult"
     assert payload["adapter_bridge_observations_schema"][
         "title"
     ] == "AdapterBridgeObservations"
+    assert payload["adapter_bridge_write_through_result_schema"][
+        "title"
+    ] == "AdapterBridgeWriteThroughResult"
     assert payload["adapter_bridge_report_schema"]["title"] == "AdapterBridgeReport"
     assert payload["hermes_checkup_schema"]["title"] == "HermesCheckup"
     assert payload["hermes_report_schema"]["title"] == "HermesReport"
@@ -186,6 +189,17 @@ def test_adapter_observations_schema_command_prints_json(capsys) -> None:  # typ
     assert payload["properties"]["raw_content_included"]["const"] is False
 
 
+def test_adapter_write_through_result_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "adapter-write-through-result"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "AdapterBridgeWriteThroughResult"
+    assert payload["properties"]["raw_content_included"]["const"] is False
+    assert payload["properties"]["writer_result_included"]["const"] is False
+    assert payload["properties"]["observe_only"]["const"] is True
+    assert payload["properties"]["production_enforcement"]["const"] is False
+
+
 def test_adapter_report_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["schema", "adapter-report"]) == 0
     captured = capsys.readouterr()
@@ -226,7 +240,7 @@ def test_adapter_observe_memory_json_command_redacts_candidate(tmp_path, capsys)
     payload = json.loads(captured.out)
     rendered = json.dumps(payload, sort_keys=True)
 
-    assert payload["bridge_version"] == "mf-22"
+    assert payload["bridge_version"] == "mf-23"
     assert payload["observation"]["level"] == "pass"
     assert payload["raw_content_included"] is False
     assert candidate not in rendered
@@ -305,7 +319,7 @@ def test_adapter_observations_cli_reads_redacted_rows(tmp_path, capsys) -> None:
     payload = json.loads(captured.out)
     rendered = json.dumps(payload, sort_keys=True)
 
-    assert payload["bridge_version"] == "mf-22"
+    assert payload["bridge_version"] == "mf-23"
     assert payload["total_observations"] == 1
     assert payload["high_risk_observations"] == 1
     assert payload["observations"][0]["event_ref"] == "adapter-observation-row-1"
@@ -316,7 +330,7 @@ def test_adapter_observations_cli_reads_redacted_rows(tmp_path, capsys) -> None:
 def test_adapter_observations_cli_handles_corrupt_jsonl_without_raw_echo(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
     state_dir = tmp_path / "bridge-state"
     state_dir.mkdir()
-    raw_line = '{"bridge_version": "mf-22", "target": "sk-test-secret"'
+    raw_line = '{"bridge_version": "mf-23", "target": "sk-test-secret"'
     (state_dir / "observations.jsonl").write_text(raw_line + "\n", encoding="utf-8")
 
     assert (
@@ -385,8 +399,8 @@ def test_adapter_report_cli_writes_redacted_bundle_and_exits_for_high_risk(tmp_p
     redacted_share = (output_dir / "redacted-share.json").read_text(encoding="utf-8")
     rendered_stdout = json.dumps(payload, sort_keys=True)
 
-    assert payload["report_version"] == "mf-22"
-    assert payload["bridge_version"] == "mf-22"
+    assert payload["report_version"] == "mf-23"
+    assert payload["bridge_version"] == "mf-23"
     assert payload["summary"]["high_risk_observations"] == 1
     assert report_json["summary"]["high_risk_observations"] == 1
     assert payload["files"] == {
@@ -486,7 +500,7 @@ def test_adapter_report_cli_handles_corrupt_jsonl_without_raw_echo(tmp_path, cap
     state_dir = tmp_path / "bridge-state"
     output_dir = tmp_path / "bridge-report"
     state_dir.mkdir()
-    raw_line = '{"bridge_version": "mf-22", "target": "sk-test-secret"'
+    raw_line = '{"bridge_version": "mf-23", "target": "sk-test-secret"'
     (state_dir / "observations.jsonl").write_text(raw_line + "\n", encoding="utf-8")
 
     assert (

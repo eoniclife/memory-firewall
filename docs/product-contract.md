@@ -1,8 +1,9 @@
 # Memory Firewall Product Contract
 
-MF-22 adds a local redacted generic adapter report over one supplied-candidate
-diagnostics stream, plus the explicit current-version-only Hermes diagnostics
-lens over the first observe-only Hermes hook alpha, Hermes user-plugin shim
+MF-23 adds a generic Python write-through helper for caller-owned memory writes,
+plus a local redacted generic adapter report over one supplied-candidate
+diagnostics stream, the explicit current-version-only Hermes diagnostics lens
+over the first observe-only Hermes hook alpha, Hermes user-plugin shim
 installer, redacted Hermes observations readout, local Hermes checkup/report,
 calibrated signal levels from real Hermes dogfood, version-aware diagnostics,
 and existing scan, detector, review, proxy, and report surfaces while keeping
@@ -31,15 +32,15 @@ memory-firewall
     installer, version-aware redacted Hermes observations readout,
     current-version-only diagnostics lens, local Hermes checkup, local Hermes
     diagnostics report, generic one-candidate adapter bridge, local generic
-    adapter diagnostics report, conformance probe, and CLI shell for the future
-    inspection/demo/reference guardrail
+    adapter diagnostics report, generic Python write-through helper, conformance
+    probe, and CLI shell for the future inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-22 Allows
+## MF-23 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -155,8 +156,12 @@ private orchestration layer
   `redacted-share.json`;
 - redacted generic adapter report rows with local observation handles, setup
   status, all-history detector/risk counts, next steps, and limitations;
-- machine-readable `adapter-observe-result`, `adapter-observations`, and
-  `adapter-report` schemas;
+- Python helper `observe_then_write_memory(...)` for calling a caller-owned
+  memory writer after observation;
+- redacted generic write-through helper results that omit raw candidate text,
+  raw-derived event ids, writer return values, and unsafe writer labels;
+- machine-readable `adapter-observe-result`, `adapter-observations`,
+  `adapter-write-through-result`, and `adapter-report` schemas;
 - local configuration of the generic adapter diagnostics directory via
   `MEMORY_FIREWALL_ADAPTER_DIR`;
 - opt-in turn-level scanning for implicit memory providers via
@@ -172,7 +177,7 @@ private orchestration layer
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-22 Does Not Allow
+## MF-23 Does Not Allow
 
 - broad real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -215,6 +220,10 @@ private orchestration layer
 - claims that the generic adapter report is a raw trace export, approved-memory
   ledger, hosted dashboard, telemetry service, provider wrapper, or enforcement
   audit;
+- claims that the generic write-through helper wraps, replaces, configures,
+  suppresses, retries, approves, or secures a production memory provider;
+- claims that generic write-through helper results include raw writer output or
+  are safe-to-share raw traces;
 - claims that generic adapter commands suppress native memory writes, enforce
   quarantine, or approve memory;
 - automatic trusted-context injection into Hermes prompts;
@@ -676,7 +685,8 @@ view for upgrade and first-run clarity.
 
 ## Generic Adapter Bridge Surface
 
-MF-22 includes a generic local bridge and report for custom agents and scripts:
+MF-23 includes a generic local bridge, report, and write-through helper for
+custom agents and scripts:
 
 - `memory-firewall adapter observe-memory --content ... --target ...
   --source-authority untrusted --json`;
@@ -684,7 +694,8 @@ MF-22 includes a generic local bridge and report for custom agents and scripts:
 - `memory-firewall adapter observations --json`;
 - `memory-firewall adapter report --out <dir> --json`;
 - `memory-firewall adapter report --out <dir> --open`;
-- Python helper `observe_memory_candidate(...)`.
+- Python helper `observe_memory_candidate(...)`;
+- Python helper `observe_then_write_memory(...)`.
 
 The bridge accepts one supplied candidate at a time, normalizes it into a
 canonical `MemoryEvent`, scans it with the existing Memory Firewall
@@ -719,13 +730,24 @@ adapter diagnostics include high-risk rows. WARN-only diagnostics, including
 malformed JSONL diagnostic rows, remain review signals and do not by themselves
 make the report fail.
 
+The write-through helper observes the candidate first, then calls a
+caller-supplied memory writer with the same content. It discards the writer's
+return value and returns only redacted writer status plus the redacted
+observation summary. If the writer raises, the default behavior is to re-raise
+so caller semantics are preserved; callers can opt into a redacted failure
+result for local diagnostics. The failure result includes the exception type
+only, not the exception message.
+
 The generic bridge is deliberately observe-only. It does not discover or scan
 an existing store, replace a provider, suppress native writes, approve memory,
 write trusted ledger state, or claim direct integration with Mem0, Honcho,
 GBrain, LangChain, Letta, Zep, Hermes, a vector database, or any production
 memory backend. The generic adapter report is a local static readout, not a
 hosted dashboard, telemetry service, raw trace export, approved-memory ledger,
-provider wrapper, or enforcement audit.
+provider wrapper, or enforcement audit. The write-through helper is install
+ergonomics for caller-owned memory write paths, not provider replacement,
+suppression, retry, enforcement, approval, trusted ledger, or framework-specific
+adapter support.
 
 ## Adapter Capability Surface
 

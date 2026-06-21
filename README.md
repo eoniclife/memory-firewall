@@ -14,14 +14,13 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository's runtime/schema surface is MF-22: a generic local adapter
-report over one supplied-candidate diagnostics stream, plus the first
+This repository's runtime/schema surface is MF-23: a generic Python
+write-through helper for caller-owned memory writes, plus a local generic
+adapter report over one supplied-candidate diagnostics stream, the first
 observe-only Hermes hook alpha, Hermes user-plugin shim installer, redacted
 recent-observations readout, local Hermes checkup/report, calibrated signal
 levels from real Hermes dogfood, and version-aware diagnostics over the existing
-Memory Firewall scan/detector/report surfaces. MF-22 makes the generic bridge
-more useful by writing a local `report.json`, `index.html`, and redacted
-`redacted-share.json` over adapter observations.
+Memory Firewall scan/detector/report surfaces.
 
 Implemented now:
 
@@ -61,6 +60,8 @@ Implemented now:
   redacted result;
 - redacted generic adapter observations readout;
 - local redacted `memory-firewall adapter report`;
+- generic Python `observe_then_write_memory(...)` helper for caller-owned
+  memory write functions;
 - adapter capability report model and schema;
 - a built-in fake adapter conformance probe;
 - machine-readable event/finding/detector/state-analysis/scan/review/demo/proxy/report/adapter/Hermes
@@ -102,6 +103,7 @@ uv run --python 3.12 --extra dev memory-firewall schema report-result
 uv run --python 3.12 --extra dev memory-firewall schema redacted-report-export
 uv run --python 3.12 --extra dev memory-firewall schema adapter-observe-result
 uv run --python 3.12 --extra dev memory-firewall schema adapter-observations
+uv run --python 3.12 --extra dev memory-firewall schema adapter-write-through-result
 uv run --python 3.12 --extra dev memory-firewall schema adapter-report
 uv run --python 3.12 --extra dev memory-firewall schema hermes-checkup
 uv run --python 3.12 --extra dev memory-firewall schema hermes-report
@@ -138,9 +140,9 @@ uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 
 ## Generic Adapter Bridge
 
-Use the MF-22 bridge and report when an agent or script has one memory candidate
-and wants Memory Firewall diagnostics without building full `MemoryEvent` JSON
-by hand.
+Use the MF-23 bridge, report, and write-through helper when an agent or script
+has one memory candidate and wants Memory Firewall diagnostics without building
+full `MemoryEvent` JSON by hand.
 
 ```bash
 memory-firewall adapter observe-memory \
@@ -153,6 +155,25 @@ memory-firewall adapter observations --limit 20 --json
 memory-firewall adapter report --out ./adapter-memory-report --open
 ```
 
+For in-process Python agents, place the helper around the memory-write function
+you already own:
+
+```python
+from memory_firewall import observe_then_write_memory
+
+memory_store: list[str] = []
+
+def write_to_my_memory_store(content: str) -> None:
+    memory_store.append(content)
+
+result = observe_then_write_memory(
+    content="Remember that the user prefers local tools.",
+    target_namespace="profile",
+    write_candidate=write_to_my_memory_store,
+)
+print(result.to_dict()["observation"]["level"])
+```
+
 The bridge writes local private diagnostics under
 `~/.memory-firewall/adapter` by default. Those local JSONL files may contain raw
 candidate memory text. The command output and report rows are redacted summaries
@@ -162,7 +183,9 @@ and do not include raw/proposed content or raw-derived event ids.
 and remains the safer artifact to share. The bridge is observe-only: it does not
 scan existing stores, replace memory providers, suppress writes, approve
 memories, or claim direct support for Mem0, Honcho, GBrain, LangChain, Letta,
-Zep, or vector databases.
+Zep, or vector databases. `observe_then_write_memory(...)` calls the supplied
+writer after observation, discards the writer return value, and reports only
+redacted writer status.
 
 ## Hermes Hook Alpha
 
@@ -381,6 +404,13 @@ recent redacted-row table, next steps, and limitations. The share export redacts
 local paths and does not include raw candidate memory text or raw event ids. It
 is a local alpha readout, not a hosted dashboard, telemetry service, provider
 wrapper, approval ledger, or scanner for existing memory stores.
+
+MF-23 adds `observe_then_write_memory(...)` for in-process agent integrations.
+It observes one candidate, calls a caller-supplied memory writer, discards the
+writer return value, and returns redacted writer status plus the redacted
+observation summary. It is install ergonomics for custom agents, not a
+framework adapter, provider wrapper, write suppressor, approval gate, or trusted
+ledger.
 
 ## Relationship To Agent Memory Contracts
 

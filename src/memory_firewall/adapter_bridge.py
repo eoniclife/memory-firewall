@@ -7,6 +7,7 @@ import json
 import os
 import re
 import stat
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,8 +27,8 @@ from .models import (
 from .scan import ScanEventLevel, ScanEventResult, scan_event
 from .version import __version__
 
-ADAPTER_BRIDGE_VERSION = "mf-22"
-ADAPTER_BRIDGE_REPORT_VERSION = "mf-22"
+ADAPTER_BRIDGE_VERSION = "mf-23"
+ADAPTER_BRIDGE_REPORT_VERSION = "mf-23"
 ADAPTER_BRIDGE_DIR_ENV = "MEMORY_FIREWALL_ADAPTER_DIR"
 ADAPTER_BRIDGE_EVENTS_FILENAME = "events.jsonl"
 ADAPTER_BRIDGE_OBSERVATIONS_FILENAME = "observations.jsonl"
@@ -445,6 +446,82 @@ class AdapterBridgeObserveResult:
             "observe_only": self.observe_only,
             "production_enforcement": self.production_enforcement,
             "raw_content_included": self.raw_content_included,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AdapterBridgeWriteThroughResult:
+    """Redacted result for observing then calling a local memory writer."""
+
+    bridge_version: str
+    state_dir: str
+    observation: AdapterBridgeObservationSummary
+    writer_label: str
+    writer_called: bool
+    writer_succeeded: bool
+    writer_error_type: str | None
+    observe_only: bool = True
+    production_enforcement: bool = False
+    raw_content_included: bool = False
+    writer_result_included: bool = False
+
+    def __post_init__(self) -> None:
+        if self.bridge_version != ADAPTER_BRIDGE_VERSION:
+            raise ValueError(f"bridge_version must be {ADAPTER_BRIDGE_VERSION}")
+        if not self.state_dir:
+            raise ValueError("state_dir must not be empty")
+        if not isinstance(self.observation, AdapterBridgeObservationSummary):
+            raise TypeError("observation must be AdapterBridgeObservationSummary")
+        if not self.writer_label:
+            raise ValueError("writer_label must not be empty")
+        for field_name in (
+            "writer_called",
+            "writer_succeeded",
+            "observe_only",
+            "production_enforcement",
+            "raw_content_included",
+            "writer_result_included",
+        ):
+            if not isinstance(getattr(self, field_name), bool):
+                raise TypeError(f"{field_name} must be bool")
+        if self.writer_called is False and self.writer_succeeded is True:
+            raise ValueError("writer_succeeded cannot be true when writer_called is false")
+        if self.writer_error_type is not None and (
+            not isinstance(self.writer_error_type, str) or not self.writer_error_type
+        ):
+            raise ValueError("writer_error_type must be a non-empty string or null")
+        if self.writer_called is False and self.writer_error_type is not None:
+            raise ValueError("writer_error_type must be null when writer_called is false")
+        if (
+            self.writer_called is True
+            and self.writer_succeeded is False
+            and self.writer_error_type is None
+        ):
+            raise ValueError("writer_error_type must be set when a called writer fails")
+        if self.writer_succeeded is True and self.writer_error_type is not None:
+            raise ValueError("writer_error_type must be null on success")
+        if self.observe_only is not True:
+            raise ValueError("observe_only must be true")
+        if self.production_enforcement is not False:
+            raise ValueError("production_enforcement must be false")
+        if self.raw_content_included is not False:
+            raise ValueError("raw_content_included must be false")
+        if self.writer_result_included is not False:
+            raise ValueError("writer_result_included must be false")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "bridge_version": self.bridge_version,
+            "state_dir": self.state_dir,
+            "observation": self.observation.to_dict(),
+            "writer_label": self.writer_label,
+            "writer_called": self.writer_called,
+            "writer_succeeded": self.writer_succeeded,
+            "writer_error_type": self.writer_error_type,
+            "observe_only": self.observe_only,
+            "production_enforcement": self.production_enforcement,
+            "raw_content_included": self.raw_content_included,
+            "writer_result_included": self.writer_result_included,
         }
 
 
@@ -1172,4 +1249,75 @@ def observe_memory_candidate(
         bridge_version=ADAPTER_BRIDGE_VERSION,
         state_dir=str(output_dir),
         observation=_summary_from_row(observation.to_dict(), row_number=row_number),
+    )
+
+
+def observe_then_write_memory(
+    *,
+    content: str,
+    write_candidate: Callable[[str], object],
+    target_namespace: str = "memory",
+    actor: str = "agent:local",
+    user_or_tenant_scope: str = "local",
+    source_type: SourceType = SourceType.UNKNOWN,
+    source_id: str = "adapter-bridge",
+    source_authority: SourceAuthority = SourceAuthority.UNTRUSTED,
+    operation: MemoryOperation = MemoryOperation.CREATE,
+    adapter_name: str = "local-adapter",
+    writer_label: str = "memory-writer",
+    state_dir: str | Path | None = None,
+    metadata: Mapping[str, JSONScalar] | None = None,
+    raise_writer_errors: bool = True,
+) -> AdapterBridgeWriteThroughResult:
+    """Observe one candidate, then call the caller-owned memory writer.
+
+    The helper does not inspect, wrap, suppress, retry, or approve the memory
+    backend. The writer return value is intentionally discarded so redacted
+    result payloads cannot accidentally become raw memory exports.
+    """
+
+    if not callable(write_candidate):
+        raise TypeError("write_candidate must be callable")
+    result = observe_memory_candidate(
+        content=content,
+        target_namespace=target_namespace,
+        actor=actor,
+        user_or_tenant_scope=user_or_tenant_scope,
+        source_type=source_type,
+        source_id=source_id,
+        source_authority=source_authority,
+        operation=operation,
+        adapter_name=adapter_name,
+        state_dir=state_dir,
+        metadata=metadata,
+    )
+    public_writer_label = _safe_public_label(
+        writer_label,
+        default="unknown-writer",
+    )
+    try:
+        write_candidate(content)
+    except Exception as exc:
+        if raise_writer_errors:
+            raise
+        return AdapterBridgeWriteThroughResult(
+            bridge_version=ADAPTER_BRIDGE_VERSION,
+            state_dir=result.state_dir,
+            observation=result.observation,
+            writer_label=public_writer_label,
+            writer_called=True,
+            writer_succeeded=False,
+            writer_error_type=_safe_public_label(
+                type(exc).__name__,
+                default="writer-error",
+            ),
+        )
+    return AdapterBridgeWriteThroughResult(
+        bridge_version=ADAPTER_BRIDGE_VERSION,
+        state_dir=result.state_dir,
+        observation=result.observation,
+        writer_label=public_writer_label,
+        writer_called=True,
+        writer_succeeded=True,
+        writer_error_type=None,
     )

@@ -46,7 +46,7 @@ from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-22"
+SCHEMA_VERSION = "mf-23"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -1767,7 +1767,7 @@ def adapter_bridge_observe_result_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-observe-result.mf-22.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-observe-result.mf-23.json",
         "title": "AdapterBridgeObserveResult",
         "type": "object",
         "additionalProperties": False,
@@ -1795,7 +1795,7 @@ def adapter_bridge_observations_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-observations.mf-22.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-observations.mf-23.json",
         "title": "AdapterBridgeObservations",
         "type": "object",
         "additionalProperties": False,
@@ -1830,6 +1830,77 @@ def adapter_bridge_observations_schema() -> dict[str, Any]:
             "production_enforcement": {"const": False},
             "raw_content_included": {"const": False},
         },
+    }
+
+
+def adapter_bridge_write_through_result_schema() -> dict[str, Any]:
+    """Return the generic adapter write-through helper result JSON schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-write-through-result.mf-23.json",
+        "title": "AdapterBridgeWriteThroughResult",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "bridge_version",
+            "state_dir",
+            "observation",
+            "writer_label",
+            "writer_called",
+            "writer_succeeded",
+            "writer_error_type",
+            "observe_only",
+            "production_enforcement",
+            "raw_content_included",
+            "writer_result_included",
+        ],
+        "properties": {
+            "bridge_version": {"const": ADAPTER_BRIDGE_VERSION},
+            "state_dir": {"type": "string", "minLength": 1},
+            "observation": _adapter_bridge_observation_summary_schema(),
+            "writer_label": {"type": "string", "minLength": 1},
+            "writer_called": {"type": "boolean"},
+            "writer_succeeded": {"type": "boolean"},
+            "writer_error_type": {
+                "anyOf": [
+                    {"type": "string", "minLength": 1},
+                    {"type": "null"},
+                ],
+            },
+            "observe_only": {"const": True},
+            "production_enforcement": {"const": False},
+            "raw_content_included": {"const": False},
+            "writer_result_included": {"const": False},
+        },
+        "allOf": [
+            {
+                "if": {"properties": {"writer_called": {"const": False}}},
+                "then": {
+                    "properties": {
+                        "writer_succeeded": {"const": False},
+                        "writer_error_type": {"type": "null"},
+                    }
+                },
+            },
+            {
+                "if": {
+                    "properties": {
+                        "writer_called": {"const": True},
+                        "writer_succeeded": {"const": False},
+                    }
+                },
+                "then": {
+                    "properties": {
+                        "writer_error_type": {"type": "string", "minLength": 1}
+                    }
+                },
+            },
+            {
+                "if": {"properties": {"writer_succeeded": {"const": True}}},
+                "then": {"properties": {"writer_error_type": {"type": "null"}}},
+            },
+        ],
     }
 
 
@@ -1893,7 +1964,7 @@ def adapter_bridge_report_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-report.mf-22.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-report.mf-23.json",
         "title": "AdapterBridgeReport",
         "type": "object",
         "additionalProperties": False,
@@ -2231,6 +2302,9 @@ def schema_bundle() -> dict[str, Any]:
         "redacted_report_export_schema": redacted_report_export_schema(),
         "adapter_bridge_observe_result_schema": adapter_bridge_observe_result_schema(),
         "adapter_bridge_observations_schema": adapter_bridge_observations_schema(),
+        "adapter_bridge_write_through_result_schema": (
+            adapter_bridge_write_through_result_schema()
+        ),
         "adapter_bridge_report_schema": adapter_bridge_report_schema(),
         "hermes_checkup_schema": hermes_checkup_schema(),
         "hermes_report_schema": hermes_report_schema(),

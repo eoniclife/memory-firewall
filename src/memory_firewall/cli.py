@@ -54,6 +54,7 @@ from .schema import (
     adapter_bridge_observations_schema,
     adapter_bridge_report_schema,
     adapter_bridge_observe_result_schema,
+    adapter_bridge_write_through_result_schema,
     adapter_capability_report_schema,
     detector_pack_schema,
     detector_result_schema,
@@ -131,6 +132,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "redacted-report-export",
             "adapter-observe-result",
             "adapter-observations",
+            "adapter-write-through-result",
             "adapter-report",
             "hermes-checkup",
             "hermes-report",
@@ -649,6 +651,8 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = adapter_bridge_observe_result_schema()
     elif name == "adapter-observations":
         payload = adapter_bridge_observations_schema()
+    elif name == "adapter-write-through-result":
+        payload = adapter_bridge_write_through_result_schema()
     elif name == "adapter-report":
         payload = adapter_bridge_report_schema()
     elif name == "hermes-checkup":
