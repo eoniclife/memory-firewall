@@ -31,6 +31,7 @@ from .hermes import (
     summarize_hermes_observations,
     write_hermes_report_bundle,
 )
+from .lineage import load_lineage_report
 from .models import MemoryEvent, MemoryOperation, SourceAuthority, SourceType
 from .policy import DISPOSITION_ORDER, SEVERITY_ORDER, PolicyConfig
 from .proxy import ProxyMode, run_reference_proxy
@@ -66,6 +67,7 @@ from .schema import (
     hermes_observations_schema,
     hermes_report_schema,
     hermes_status_schema,
+    lineage_report_schema,
     override_receipt_schema,
     policy_schema,
     reference_proxy_result_schema,
@@ -138,6 +140,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "hermes-report",
             "hermes-status",
             "hermes-observations",
+            "lineage-report",
             "bundle",
         ),
         help="Schema to print.",
@@ -597,6 +600,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     hermes_install_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    lineage_parser = subparsers.add_parser(
+        "lineage",
+        help="Inspect stage-aware memory candidate lineage packets.",
+    )
+    lineage_subparsers = lineage_parser.add_subparsers(
+        dest="lineage_command",
+        required=True,
+    )
+    lineage_report_parser = lineage_subparsers.add_parser(
+        "report",
+        help="Generate a candidate-level lineage report from one JSON packet.",
+    )
+    lineage_report_parser.add_argument(
+        "path",
+        help="Path to a stage-aware lineage input JSON file.",
+    )
+    lineage_report_parser.add_argument("--json", action="store_true", dest="as_json")
+
     return parser
 
 
@@ -663,6 +684,8 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = hermes_status_schema()
     elif name == "hermes-observations":
         payload = hermes_observations_schema()
+    elif name == "lineage-report":
+        payload = lineage_report_schema()
     else:
         payload = schema_bundle()
     _print_json(payload, stdout)
@@ -1430,6 +1453,60 @@ def _run_hermes_install_plugin(
     return 0
 
 
+def _run_lineage_report(path: str, as_json: bool, stdout: TextIO) -> int:
+    report = load_lineage_report(path)
+    if as_json:
+        _print_json(report.to_dict(), stdout)
+    else:
+        summary = report.summary
+        print(
+            f"{report.lineage_version}: {report.provider} "
+            f"{report.provider_version} lineage",
+            file=stdout,
+        )
+        print(f"- candidates: {summary.candidates}", file=stdout)
+        print(f"- persisted: {summary.persisted_candidates}", file=stdout)
+        print(f"- retrieved: {summary.retrieved_candidates}", file=stdout)
+        print(
+            f"- downstream-used: {summary.downstream_used_candidates}",
+            file=stdout,
+        )
+        print(
+            f"- candidate-level verdicts: {summary.candidate_level_verdicts}",
+            file=stdout,
+        )
+        print(
+            f"- case-level-only candidates: {summary.case_level_only_candidates}",
+            file=stdout,
+        )
+        print(
+            f"- highest any-candidate disposition: "
+            f"{summary.highest_any_candidate_disposition.value}",
+            file=stdout,
+        )
+        print(
+            f"- highest downstream-used disposition: "
+            f"{summary.highest_downstream_used_candidate_disposition.value}",
+            file=stdout,
+        )
+        print(
+            f"- downstream-used escalated: "
+            f"{summary.downstream_used_candidates_escalated}",
+            file=stdout,
+        )
+        print(
+            f"- downstream-used unscanned: "
+            f"{summary.downstream_used_candidates_unscanned}",
+            file=stdout,
+        )
+        for issue in report.issues:
+            print(
+                f"- ISSUE {issue.code}: {issue.message}",
+                file=stdout,
+            )
+    return 1 if report.issues else 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the Memory Firewall CLI."""
 
@@ -1638,6 +1715,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sys.stdout,
             )
         parser.error(f"unknown hermes command: {hermes_command}")
+    if args.command == "lineage":
+        lineage_command = str(args.lineage_command)
+        if lineage_command == "report":
+            return _run_lineage_report(
+                str(args.path),
+                bool(args.as_json),
+                sys.stdout,
+            )
+        parser.error(f"unknown lineage command: {lineage_command}")
     parser.error(f"unknown command: {args.command}")
     return 2
 
