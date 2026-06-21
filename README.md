@@ -14,11 +14,12 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository is in MF-18: a first observe-only Hermes hook alpha, Hermes
-user-plugin shim installer, redacted recent-observations readout, local Hermes
-checkup/report, calibrated signal levels from real Hermes dogfood, and
-version-aware diagnostics over the existing Memory Firewall scan/detector/report
-surfaces.
+This repository's runtime/schema surface is MF-18: a first observe-only Hermes
+hook alpha, Hermes user-plugin shim installer, redacted recent-observations
+readout, local Hermes checkup/report, calibrated signal levels from real Hermes
+dogfood, and version-aware diagnostics over the existing Memory Firewall
+scan/detector/report surfaces. MF-19 is a documentation and dogfood runbook pass
+over that MF-18 surface.
 
 Implemented now:
 
@@ -142,6 +143,31 @@ memory-firewall hermes checkup --write-sample --json
 That writes one synthetic local observation into the selected diagnostics
 directory and then verifies that the redacted readout path can see it. It does
 not enable enforcement or suppress native Hermes memory.
+
+### Fresh Current-Version Dogfood
+
+After installing or upgrading the Hermes plugin, run a fresh agent session so the
+next observation is recorded by the current adapter version. Use only harmless
+test text here because the agent will write it into your Hermes memory.
+
+```bash
+python -m pip install -e .
+memory-firewall hermes install-plugin --force
+hermes plugins enable memory-firewall
+memory-firewall hermes checkup --json
+hermes -z "Use the built-in memory tool to add this harmless test memory exactly once: MF current-version dogfood marker: Memory Firewall should show a current-version WARN row. After using the memory tool, reply with only: done."
+memory-firewall hermes status --json
+memory-firewall hermes observations --limit 5 --json
+memory-firewall hermes report --out ./hermes-memory-report --open
+```
+
+In `status` and `report`, `current_version_observations` should increase after
+the fresh memory write. In `observations`, the newest row should have
+`recorded_integration_version` equal to the top-level `integration_version`.
+A normal provenance-only memory marker should be a WARN/review row. Older
+HIGH-RISK rows may still keep the command exit code at `1`; that means local
+diagnostics still contain high-risk history, not that the fresh current-version
+marker was blocked or reclassified.
 
 By default the plugin records only high-signal memory write tool attempts.
 Diagnostics are local JSONL files under `~/.hermes/memory-firewall/`, unless
