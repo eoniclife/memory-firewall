@@ -180,8 +180,9 @@ in the selected report scope.
 window includes a high-risk row. Use `--current-version-only` on `observations`
 or `report` when you need to inspect the rows recorded by the currently
 installed adapter after an upgrade. Filtered outputs still include all-history
-counts such as `total_observations` and `high_risk_observations`, plus
-`matching_*` counts for the selected scope. Check `overall_status`,
+counts such as `total_observations`, `high_risk_observations`,
+`warn_observations`, and `pass_observations`, plus `matching_*` counts for the
+selected scope. Check `overall_status`,
 `observation_scope`, `matching_high_risk_observations`,
 `high_risk_observations`, and the returned rows before interpreting exit code
 `1`; it may reflect historical diagnostics, not a blocked or reclassified

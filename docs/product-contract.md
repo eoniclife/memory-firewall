@@ -117,7 +117,8 @@ private orchestration layer
 - recorded adapter-version labels on redacted Hermes observation summaries;
 - explicit `--current-version-only` filtering for Hermes observations and
   reports;
-- all-history totals plus `matching_*` counts in filtered Hermes diagnostics;
+- all-history totals and level counts plus `matching_*` counts in filtered
+  Hermes diagnostics;
 - machine-readable `hermes-observations` schema;
 - `memory-firewall hermes checkup --json`;
 - local Hermes setup checks over generated shim files, `plugins.enabled`
@@ -555,8 +556,8 @@ MF-20 adds explicit current-version-only Hermes diagnostics:
 - `memory-firewall hermes observations --current-version-only`;
 - `memory-firewall hermes report --current-version-only --out <dir>`;
 - filtered outputs set `observation_scope: current_version`;
-- filtered outputs retain all-history totals and expose `matching_*` counts for
-  the selected scope;
+- filtered outputs retain all-history totals and level counts, and expose
+  `matching_*` counts for the selected scope;
 - current-version-only report exit status is based on setup readiness and
   whether rows exist in the selected scope plus matching high-risk rows, not
   legacy high-risk rows outside the selected scope;

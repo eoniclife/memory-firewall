@@ -362,6 +362,8 @@ def test_hermes_current_version_only_cli_filters_legacy_high_risk(tmp_path, caps
 
     assert observations_payload["observation_scope"] == "current_version"
     assert observations_payload["total_observations"] == 2
+    assert observations_payload["high_risk_observations"] == 1
+    assert observations_payload["warn_observations"] == 1
     assert observations_payload["matching_observations"] == 1
     assert observations_payload["matching_high_risk_observations"] == 0
     assert observations_payload["matching_warn_observations"] == 1

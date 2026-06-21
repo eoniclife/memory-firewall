@@ -598,6 +598,9 @@ class HermesObservationList:
     observation_scope: str
     limit: int
     total_observations: int
+    high_risk_observations: int
+    warn_observations: int
+    pass_observations: int
     matching_observations: int
     matching_high_risk_observations: int
     matching_warn_observations: int
@@ -618,6 +621,9 @@ class HermesObservationList:
             raise ValueError("limit must be positive")
         for field_name in (
             "total_observations",
+            "high_risk_observations",
+            "warn_observations",
+            "pass_observations",
             "matching_observations",
             "matching_high_risk_observations",
             "matching_warn_observations",
@@ -634,6 +640,13 @@ class HermesObservationList:
         if self.returned_observations > self.matching_observations:
             raise ValueError("returned_observations cannot exceed matching_observations")
         if (
+            self.high_risk_observations
+            + self.warn_observations
+            + self.pass_observations
+            > self.total_observations
+        ):
+            raise ValueError("level counts cannot exceed total_observations")
+        if (
             self.matching_high_risk_observations
             + self.matching_warn_observations
             + self.matching_pass_observations
@@ -648,6 +661,9 @@ class HermesObservationList:
             "observation_scope": self.observation_scope,
             "limit": self.limit,
             "total_observations": self.total_observations,
+            "high_risk_observations": self.high_risk_observations,
+            "warn_observations": self.warn_observations,
+            "pass_observations": self.pass_observations,
             "matching_observations": self.matching_observations,
             "matching_high_risk_observations": self.matching_high_risk_observations,
             "matching_warn_observations": self.matching_warn_observations,
@@ -1686,6 +1702,15 @@ def recent_hermes_observations(
         observation_scope=observation_scope,
         limit=limit,
         total_observations=len(rows),
+        high_risk_observations=sum(
+            1 for item in summaries if item.level == ScanEventLevel.HIGH_RISK.value
+        ),
+        warn_observations=sum(
+            1 for item in summaries if item.level == ScanEventLevel.WARN.value
+        ),
+        pass_observations=sum(
+            1 for item in summaries if item.level == ScanEventLevel.PASS.value
+        ),
         matching_observations=len(matching),
         matching_high_risk_observations=sum(
             1 for item in matching if item.level == ScanEventLevel.HIGH_RISK.value

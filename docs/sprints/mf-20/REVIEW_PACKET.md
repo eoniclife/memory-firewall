@@ -97,8 +97,21 @@ Privacy smoke:
 Reviewer should check:
 
 - filtered report output cannot be mistaken for clearing old risks;
-- all-history counts remain visible in filtered JSON/report output;
+- all-history risk counts remain visible in filtered JSON/report output;
 - exit code behavior is scoped only when the user explicitly requests a scoped
   report;
 - status remains all-history;
 - public docs do not overclaim enforcement, write suppression, or trusted memory.
+
+## Review Fix Pass
+
+Independent reviewer Anscombe requested changes on exact head
+`108bec325b0c52db6b11a7d7b065bb4bac539240`: filtered observations disclosed
+`total_observations` and `matching_*` counts, but not all-history
+`high_risk_observations`, `warn_observations`, and `pass_observations`. That
+made `observations --current-version-only` weaker than the documented filtered
+report boundary.
+
+Fix pass: `HermesObservationList` now exposes all-history level counts alongside
+matching counts, the CLI prints those counts, schemas validate them, and tests
+cover mixed legacy high-risk plus current-version WARN history.

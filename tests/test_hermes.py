@@ -237,6 +237,8 @@ def test_hermes_status_separates_current_and_legacy_observation_versions(tmp_pat
         HERMES_INTEGRATION_VERSION
     )
     assert recent.matching_observations == 2
+    assert recent.high_risk_observations == 1
+    assert recent.warn_observations == 1
     assert recent.matching_high_risk_observations == 1
     assert recent.matching_warn_observations == 1
     assert recent.observations[0].level == "warn"
@@ -244,6 +246,8 @@ def test_hermes_status_separates_current_and_legacy_observation_versions(tmp_pat
     assert recent.observations[1].level == "high_risk"
     assert current_recent.observation_scope == "current_version"
     assert current_recent.total_observations == 2
+    assert current_recent.high_risk_observations == 1
+    assert current_recent.warn_observations == 1
     assert current_recent.matching_observations == 1
     assert current_recent.matching_high_risk_observations == 0
     assert current_recent.matching_warn_observations == 1

@@ -986,6 +986,9 @@ def _run_hermes_observations(
         print(f"- state dir: {result.state_dir}", file=stdout)
         print(f"- observation scope: {result.observation_scope}", file=stdout)
         print(f"- total observations: {result.total_observations}", file=stdout)
+        print(f"- all-history high-risk: {result.high_risk_observations}", file=stdout)
+        print(f"- all-history warn: {result.warn_observations}", file=stdout)
+        print(f"- all-history pass: {result.pass_observations}", file=stdout)
         print(f"- matching observations: {result.matching_observations}", file=stdout)
         print(
             f"- matching high-risk: {result.matching_high_risk_observations}",
