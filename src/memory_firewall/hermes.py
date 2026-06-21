@@ -33,8 +33,8 @@ from .models import (
 from .scan import ScanEventLevel, ScanEventResult, scan_event
 from .version import __version__
 
-HERMES_INTEGRATION_VERSION = "mf-17"
-HERMES_REPORT_VERSION = "mf-17"
+HERMES_INTEGRATION_VERSION = "mf-18"
+HERMES_REPORT_VERSION = "mf-18"
 HERMES_EVENTS_FILENAME = "events.jsonl"
 HERMES_OBSERVATIONS_FILENAME = "observations.jsonl"
 HERMES_REPORT_JSON_FILENAME = "report.json"
@@ -506,6 +506,7 @@ class HermesObservationSummary:
     """Redacted row for inspecting a stored Hermes observation."""
 
     integration_version: str
+    recorded_integration_version: str
     row_number: int
     recorded_at: str
     hook_name: str
@@ -531,6 +532,7 @@ class HermesObservationSummary:
         if self.row_number < 1:
             raise ValueError("row_number must be positive")
         for field_name in (
+            "recorded_integration_version",
             "recorded_at",
             "hook_name",
             "tool_name",
@@ -562,6 +564,7 @@ class HermesObservationSummary:
     def to_dict(self) -> dict[str, Any]:
         return {
             "integration_version": self.integration_version,
+            "recorded_integration_version": self.recorded_integration_version,
             "row_number": self.row_number,
             "recorded_at": self.recorded_at,
             "hook_name": self.hook_name,
@@ -762,6 +765,8 @@ class HermesReportSummary:
     """Compact counters for a local Hermes diagnostics report."""
 
     total_observations: int
+    current_version_observations: int
+    legacy_version_observations: int
     pass_observations: int
     warn_observations: int
     high_risk_observations: int
@@ -774,6 +779,8 @@ class HermesReportSummary:
     def __post_init__(self) -> None:
         for field_name in (
             "total_observations",
+            "current_version_observations",
+            "legacy_version_observations",
             "pass_observations",
             "warn_observations",
             "high_risk_observations",
@@ -783,6 +790,14 @@ class HermesReportSummary:
             value = getattr(self, field_name)
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 raise ValueError(f"{field_name} must be a non-negative integer")
+        if (
+            self.current_version_observations + self.legacy_version_observations
+            != self.total_observations
+        ):
+            raise ValueError(
+                "current_version_observations plus legacy_version_observations "
+                "must equal total_observations"
+            )
         for field_name in (
             "report_contains_raw_content",
             "hosted_dashboard",
@@ -795,6 +810,8 @@ class HermesReportSummary:
     def to_dict(self) -> dict[str, Any]:
         return {
             "total_observations": self.total_observations,
+            "current_version_observations": self.current_version_observations,
+            "legacy_version_observations": self.legacy_version_observations,
             "pass_observations": self.pass_observations,
             "warn_observations": self.warn_observations,
             "high_risk_observations": self.high_risk_observations,
@@ -1307,6 +1324,8 @@ class HermesStatus:
     integration_version: str
     state_dir: str
     total_observations: int
+    current_version_observations: int
+    legacy_version_observations: int
     high_risk_observations: int
     warn_observations: int
     pass_observations: int
@@ -1322,6 +1341,8 @@ class HermesStatus:
             raise ValueError("state_dir must not be empty")
         for field_name in (
             "total_observations",
+            "current_version_observations",
+            "legacy_version_observations",
             "high_risk_observations",
             "warn_observations",
             "pass_observations",
@@ -1330,12 +1351,22 @@ class HermesStatus:
             value = getattr(self, field_name)
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 raise ValueError(f"{field_name} must be a non-negative integer")
+        if (
+            self.current_version_observations + self.legacy_version_observations
+            != self.total_observations
+        ):
+            raise ValueError(
+                "current_version_observations plus legacy_version_observations "
+                "must equal total_observations"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "integration_version": self.integration_version,
             "state_dir": self.state_dir,
             "total_observations": self.total_observations,
+            "current_version_observations": self.current_version_observations,
+            "legacy_version_observations": self.legacy_version_observations,
             "high_risk_observations": self.high_risk_observations,
             "warn_observations": self.warn_observations,
             "pass_observations": self.pass_observations,
@@ -1520,6 +1551,11 @@ def _hermes_observation_summary_from_row(
     blocked = row.get("blocked_by_firewall")
     return HermesObservationSummary(
         integration_version=HERMES_INTEGRATION_VERSION,
+        recorded_integration_version=_safe_token(
+            row.get("integration_version"),
+            default="unknown-integration-version",
+            max_chars=64,
+        ),
         row_number=row_number,
         recorded_at=_safe_recorded_at(row.get("recorded_at")),
         hook_name=_safe_token(row.get("hook_name"), default="unknown-hook"),
@@ -1595,9 +1631,15 @@ def summarize_hermes_observations(
     warn = 0
     passed = 0
     blocked = 0
+    current_version = 0
+    legacy_version = 0
     latest: str | None = None
     for index, row in enumerate(rows, start=1):
         summary = _hermes_observation_summary_from_row(row, row_number=index)
+        if summary.recorded_integration_version == HERMES_INTEGRATION_VERSION:
+            current_version += 1
+        else:
+            legacy_version += 1
         if summary.blocked_by_firewall:
             blocked += 1
         recorded_at = summary.recorded_at
@@ -1615,6 +1657,8 @@ def summarize_hermes_observations(
         integration_version=HERMES_INTEGRATION_VERSION,
         state_dir=str(output_dir),
         total_observations=len(rows),
+        current_version_observations=current_version,
+        legacy_version_observations=legacy_version,
         high_risk_observations=high_risk,
         warn_observations=warn,
         pass_observations=passed,
@@ -1976,17 +2020,24 @@ def _hermes_report_next_steps(
             "`memory-firewall hermes report --write-sample` to validate the "
             "diagnostics readout path."
         )
-    elif checkup.status.high_risk_observations > 0:
-        steps.append(
-            "Inspect high-risk local rows with "
-            f"`memory-firewall hermes observations --limit {limit}` and decide "
-            "whether the remembered fact should be trusted."
-        )
-    elif checkup.overall_status == "ready":
-        steps.append(
-            "Keep the observe-only adapter enabled and reopen this report after "
-            "meaningful agent memory activity."
-        )
+    else:
+        if checkup.status.current_version_observations == 0:
+            steps.append(
+                "Run a fresh Hermes agent session with memory-firewall enabled "
+                "after this upgrade before treating legacy diagnostics as "
+                "current adapter behavior."
+            )
+        if checkup.status.high_risk_observations > 0:
+            steps.append(
+                "Inspect high-risk local rows with "
+                f"`memory-firewall hermes observations --limit {limit}` and decide "
+                "whether the remembered fact should be trusted."
+            )
+        elif checkup.overall_status == "ready":
+            steps.append(
+                "Keep the observe-only adapter enabled and reopen this report "
+                "after meaningful agent memory activity."
+            )
     return tuple(dict.fromkeys(steps))
 
 
@@ -2021,6 +2072,8 @@ def generate_hermes_report(
     )
     summary = HermesReportSummary(
         total_observations=checkup.status.total_observations,
+        current_version_observations=checkup.status.current_version_observations,
+        legacy_version_observations=checkup.status.legacy_version_observations,
         pass_observations=checkup.status.pass_observations,
         warn_observations=checkup.status.warn_observations,
         high_risk_observations=checkup.status.high_risk_observations,
@@ -2078,6 +2131,7 @@ def _render_hermes_report_rows(
         rows.append(
             "<tr>"
             f"<td>{item.row_number}</td>"
+            f"<td>{html.escape(item.recorded_integration_version)}</td>"
             f"<td>{html.escape(item.recorded_at)}</td>"
             f"<td>{html.escape(item.level)}</td>"
             f"<td>{html.escape(item.highest_disposition)}</td>"
@@ -2092,7 +2146,7 @@ def _render_hermes_report_rows(
     if rows:
         return "".join(rows)
     return (
-        "<tr><td colspan=\"10\">No local Hermes observations found yet.</td></tr>"
+        "<tr><td colspan=\"11\">No local Hermes observations found yet.</td></tr>"
     )
 
 
@@ -2152,7 +2206,7 @@ def render_hermes_report_html(report: HermesReportResult) -> str:
   </ul>
   <h2>Recent Redacted Observations</h2>
   <table>
-    <thead><tr><th>Row</th><th>Recorded</th><th>Level</th><th>Disposition</th><th>Tool</th><th>Target</th><th>Findings</th><th>Risks</th><th>Detectors</th><th>Handle</th></tr></thead>
+    <thead><tr><th>Row</th><th>Version</th><th>Recorded</th><th>Level</th><th>Disposition</th><th>Tool</th><th>Target</th><th>Findings</th><th>Risks</th><th>Detectors</th><th>Handle</th></tr></thead>
     <tbody>{_render_hermes_report_rows(report.observations.observations)}</tbody>
   </table>
   <h2>Next Steps</h2>

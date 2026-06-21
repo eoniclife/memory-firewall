@@ -1,11 +1,12 @@
 # Memory Firewall Product Contract
 
-MF-17 calibrates signal levels from real Hermes dogfood over the first
+MF-18 adds version-aware Hermes diagnostics over the first
 observe-only Hermes hook alpha, Hermes user-plugin shim installer, redacted
-Hermes observations readout, local Hermes checkup/report, and existing scan,
-detector, review, proxy, and report surfaces while keeping broad real
-memory-store scanning, provider replacement, trusted ledger writes, hosted
-dashboards, and production enforcement claims out of scope.
+Hermes observations readout, local Hermes checkup/report, calibrated signal
+levels from real Hermes dogfood, and existing scan, detector, review, proxy, and
+report surfaces while keeping broad real memory-store scanning, provider
+replacement, trusted ledger writes, hosted dashboards, and production
+enforcement claims out of scope.
 
 ## Category Line
 
@@ -26,16 +27,16 @@ memory-firewall
     event-stream scan/watch, local review queue, override receipts, trusted-read
     preview, poisoning demo, reference proxy, local static report, redacted
     share export, Hermes observe-only hook alpha, Hermes user-plugin shim
-    installer, redacted Hermes observations readout, local Hermes checkup, local
-    Hermes diagnostics report, conformance probe, and CLI shell for the future
-    inspection/demo/reference guardrail
+    installer, version-aware redacted Hermes observations readout, local Hermes
+    checkup, local Hermes diagnostics report, conformance probe, and CLI shell
+    for the future inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-17 Allows
+## MF-18 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -112,11 +113,14 @@ private orchestration layer
 - machine-readable `hermes-status` schema;
 - `memory-firewall hermes observations --json`;
 - redacted newest-first Hermes observation summaries over local diagnostics;
+- recorded adapter-version labels on redacted Hermes observation summaries;
 - machine-readable `hermes-observations` schema;
 - `memory-firewall hermes checkup --json`;
 - local Hermes setup checks over generated shim files, `plugins.enabled`
   config-file hints, diagnostics permissions, status counts, and recent
   redacted observations;
+- current-vs-legacy or unknown adapter-version counts in Hermes status, checkup,
+  and report summaries;
 - explicit synthetic local observation writes for first-run readout validation;
 - machine-readable `hermes-checkup` schema;
 - `memory-firewall hermes report --out <dir> --json`;
@@ -139,7 +143,7 @@ private orchestration layer
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-17 Does Not Allow
+## MF-18 Does Not Allow
 
 - broad real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -341,8 +345,8 @@ create a separate judgment path.
 
 `HIGH-RISK` includes detector dispositions that require review/quarantine,
 state-analysis contradictions, and blocked low-authority contradictions. Under
-MF-17, provenance-only untrusted writes that require reducer review are WARN
-signals rather than HIGH-RISK alerts. Such events are not clean pass events.
+MF-17 and later, provenance-only untrusted writes that require reducer review are
+WARN signals rather than HIGH-RISK alerts. Such events are not clean pass events.
 
 Finite scans keep only bounded scan-local assertion context needed for
 contradiction analysis. Only clean, review-eligible events can seed that
@@ -518,6 +522,15 @@ MF-17 calibrates signal levels from real Hermes dogfood:
 - Hermes status, observations, and report summaries count those calibrated
   levels consistently.
 
+MF-18 adds version-aware Hermes diagnostics:
+
+- redacted observation summaries include the adapter version that recorded each
+  row;
+- Hermes status, checkup, and report summaries separate current-version rows
+  from legacy or unknown-version rows;
+- historical rows keep their original recorded scan levels, so MF-18 explains
+  old dogfood history without silently recalibrating it.
+
 The Hermes hook alpha is deliberately observe-only. It can be enabled by Hermes
 as a standalone plugin and can run alongside the active Hermes memory provider.
 It does not set `memory.provider`, wrap a provider, replace Mem0/Honcho, or
@@ -580,6 +593,9 @@ The MF-17 signal calibration does not approve provenance-only memory, promote it
 to trusted state, or suppress review. It only prevents normal untrusted agent
 memory writes from looking as urgent as injection, secret, contradiction, or
 policy-quarantine events.
+
+The MF-18 version readout does not migrate, rewrite, delete, or reclassify
+historical diagnostics. It is a reporting aid for local alpha dogfood.
 
 ## Adapter Capability Surface
 

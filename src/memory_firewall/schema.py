@@ -43,7 +43,7 @@ from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-17"
+SCHEMA_VERSION = "mf-18"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -1516,7 +1516,7 @@ def hermes_status_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-status.mf-17.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-status.mf-18.json",
         "title": "HermesStatus",
         "type": "object",
         "additionalProperties": False,
@@ -1524,6 +1524,8 @@ def hermes_status_schema() -> dict[str, Any]:
             "integration_version",
             "state_dir",
             "total_observations",
+            "current_version_observations",
+            "legacy_version_observations",
             "high_risk_observations",
             "warn_observations",
             "pass_observations",
@@ -1537,6 +1539,8 @@ def hermes_status_schema() -> dict[str, Any]:
             "integration_version": {"const": HERMES_INTEGRATION_VERSION},
             "state_dir": {"type": "string", "minLength": 1},
             "total_observations": {"type": "integer", "minimum": 0},
+            "current_version_observations": {"type": "integer", "minimum": 0},
+            "legacy_version_observations": {"type": "integer", "minimum": 0},
             "high_risk_observations": {"type": "integer", "minimum": 0},
             "warn_observations": {"type": "integer", "minimum": 0},
             "pass_observations": {"type": "integer", "minimum": 0},
@@ -1564,6 +1568,7 @@ def _hermes_observation_summary_schema() -> dict[str, Any]:
         "additionalProperties": False,
         "required": [
             "integration_version",
+            "recorded_integration_version",
             "row_number",
             "recorded_at",
             "hook_name",
@@ -1583,6 +1588,7 @@ def _hermes_observation_summary_schema() -> dict[str, Any]:
         ],
         "properties": {
             "integration_version": {"const": HERMES_INTEGRATION_VERSION},
+            "recorded_integration_version": {"type": "string", "minLength": 1},
             "row_number": {"type": "integer", "minimum": 1},
             "recorded_at": {
                 "anyOf": [
@@ -1632,7 +1638,7 @@ def hermes_observations_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-observations.mf-17.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-observations.mf-18.json",
         "title": "HermesObservations",
         "type": "object",
         "additionalProperties": False,
@@ -1693,7 +1699,7 @@ def hermes_checkup_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-checkup.mf-17.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-checkup.mf-18.json",
         "title": "HermesCheckup",
         "type": "object",
         "additionalProperties": False,
@@ -1806,6 +1812,8 @@ def _hermes_report_summary_schema() -> dict[str, Any]:
         "additionalProperties": False,
         "required": [
             "total_observations",
+            "current_version_observations",
+            "legacy_version_observations",
             "pass_observations",
             "warn_observations",
             "high_risk_observations",
@@ -1817,6 +1825,8 @@ def _hermes_report_summary_schema() -> dict[str, Any]:
         ],
         "properties": {
             "total_observations": {"type": "integer", "minimum": 0},
+            "current_version_observations": {"type": "integer", "minimum": 0},
+            "legacy_version_observations": {"type": "integer", "minimum": 0},
             "pass_observations": {"type": "integer", "minimum": 0},
             "warn_observations": {"type": "integer", "minimum": 0},
             "high_risk_observations": {"type": "integer", "minimum": 0},
@@ -1842,7 +1852,7 @@ def hermes_report_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-report.mf-17.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-report.mf-18.json",
         "title": "HermesReport",
         "type": "object",
         "additionalProperties": False,

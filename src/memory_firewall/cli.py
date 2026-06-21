@@ -938,6 +938,16 @@ def _run_hermes_status(
         print(f"{status.integration_version}: Hermes hook alpha", file=stdout)
         print(f"- state dir: {status.state_dir}", file=stdout)
         print(f"- observations: {status.total_observations}", file=stdout)
+        print(
+            f"- current version observations: "
+            f"{status.current_version_observations}",
+            file=stdout,
+        )
+        print(
+            f"- legacy/unknown version observations: "
+            f"{status.legacy_version_observations}",
+            file=stdout,
+        )
         print(f"- high-risk: {status.high_risk_observations}", file=stdout)
         print(f"- warn: {status.warn_observations}", file=stdout)
         print(f"- pass: {status.pass_observations}", file=stdout)
@@ -971,6 +981,7 @@ def _run_hermes_observations(
                 f"{item.tool_name} -> {item.target_namespace}",
                 file=stdout,
             )
+            print(f"  version: {item.recorded_integration_version}", file=stdout)
             print(f"  handle: {item.event_ref}", file=stdout)
             print(
                 f"  findings: {item.finding_count}; "
@@ -1012,6 +1023,16 @@ def _run_hermes_checkup(
         )
         print(f"- state dir: {result.state_dir}", file=stdout)
         print(f"- observations: {result.status.total_observations}", file=stdout)
+        print(
+            f"- current version observations: "
+            f"{result.status.current_version_observations}",
+            file=stdout,
+        )
+        print(
+            f"- legacy/unknown version observations: "
+            f"{result.status.legacy_version_observations}",
+            file=stdout,
+        )
         print(f"- high-risk: {result.status.high_risk_observations}", file=stdout)
         print(f"- sample written: {result.sample_written}", file=stdout)
         print("- checks:", file=stdout)
@@ -1053,6 +1074,16 @@ def _run_hermes_report(
         print(f"- report json: {bundle.report_json_path}", file=stdout)
         print(f"- redacted share: {bundle.redacted_export_path}", file=stdout)
         print(f"- observations: {report.summary.total_observations}", file=stdout)
+        print(
+            f"- current version observations: "
+            f"{report.summary.current_version_observations}",
+            file=stdout,
+        )
+        print(
+            f"- legacy/unknown version observations: "
+            f"{report.summary.legacy_version_observations}",
+            file=stdout,
+        )
         print(f"- high-risk: {report.summary.high_risk_observations}", file=stdout)
         print(f"- returned rows: {report.summary.returned_observations}", file=stdout)
         print("- observe-only: true", file=stdout)
