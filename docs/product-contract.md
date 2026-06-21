@@ -1,10 +1,11 @@
 # Memory Firewall Product Contract
 
-MF-20 adds an explicit current-version-only Hermes diagnostics lens over the
-first observe-only Hermes hook alpha, Hermes user-plugin shim installer,
-redacted Hermes observations readout, local Hermes checkup/report, calibrated
-signal levels from real Hermes dogfood, version-aware diagnostics, and existing
-scan, detector, review, proxy, and report surfaces while keeping broad real
+MF-21 adds a generic local adapter bridge over one supplied memory candidate,
+plus the explicit current-version-only Hermes diagnostics lens over the first
+observe-only Hermes hook alpha, Hermes user-plugin shim installer, redacted
+Hermes observations readout, local Hermes checkup/report, calibrated signal
+levels from real Hermes dogfood, version-aware diagnostics, and existing scan,
+detector, review, proxy, and report surfaces while keeping broad real
 memory-store scanning, provider replacement, trusted ledger writes, hosted
 dashboards, and production enforcement claims out of scope.
 
@@ -29,15 +30,15 @@ memory-firewall
     share export, Hermes observe-only hook alpha, Hermes user-plugin shim
     installer, version-aware redacted Hermes observations readout,
     current-version-only diagnostics lens, local Hermes checkup, local Hermes
-    diagnostics report, conformance probe, and CLI shell for the future
-    inspection/demo/reference guardrail
+    diagnostics report, generic one-candidate adapter bridge, conformance probe,
+    and CLI shell for the future inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-20 Allows
+## MF-21 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -135,6 +136,21 @@ private orchestration layer
 - redacted Hermes report rows with local observation handles, setup status,
   detector/risk counts, and next steps;
 - machine-readable `hermes-report` schema;
+- `memory-firewall adapter observe-memory --json`;
+- Python helper `observe_memory_candidate(...)` for one caller-supplied memory
+  candidate;
+- normalization of one generic local memory candidate into a canonical
+  `MemoryEvent`;
+- local detector/policy scan over that one normalized adapter-bridge event;
+- local generic adapter diagnostics JSONL for normalized events and
+  observations, created or tightened with user-only local file permissions;
+- redacted generic adapter observe result summaries that omit raw candidate
+  text and raw-derived event ids;
+- `memory-firewall adapter observations --json`;
+- redacted newest-first generic adapter observations over local diagnostics;
+- machine-readable `adapter-observe-result` and `adapter-observations` schemas;
+- local configuration of the generic adapter diagnostics directory via
+  `MEMORY_FIREWALL_ADAPTER_DIR`;
 - opt-in turn-level scanning for implicit memory providers via
   `MEMORY_FIREWALL_HERMES_SCAN_TURNS=1`;
 - local configuration of the Hermes diagnostics directory via
@@ -148,7 +164,7 @@ private orchestration layer
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-20 Does Not Allow
+## MF-21 Does Not Allow
 
 - broad real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -181,6 +197,15 @@ private orchestration layer
   or write suppression;
 - claims that the Hermes report is a raw trace export, approved-memory ledger,
   hosted dashboard, telemetry service, or enforcement audit;
+- claims that the generic adapter bridge scans an existing memory store,
+  vector database, conversation history, or agent runtime;
+- claims that the generic adapter bridge replaces, wraps, or configures Mem0,
+  Honcho, GBrain, LangChain, Letta, Zep, Hermes, a vector database, or any
+  production memory provider;
+- claims that generic adapter observations are trusted ledger records, reducer
+  decisions, approved memories, or safe-to-share raw traces;
+- claims that generic adapter commands suppress native memory writes, enforce
+  quarantine, or approve memory;
 - automatic trusted-context injection into Hermes prompts;
 - claims that the local report is a hosted dashboard, telemetry service, auth
   system, billing system, or server process;
@@ -637,6 +662,40 @@ harmless test text.
 The MF-20 current-version-only lens does not clear historical diagnostics or
 prove that legacy high-risk observations are resolved. It is a scoped report
 view for upgrade and first-run clarity.
+
+## Generic Adapter Bridge Surface
+
+MF-21 adds a generic local bridge for custom agents and scripts:
+
+- `memory-firewall adapter observe-memory --content ... --target ...
+  --source-authority untrusted --json`;
+- `memory-firewall adapter observe-memory --content-file <path> --json`;
+- `memory-firewall adapter observations --json`;
+- Python helper `observe_memory_candidate(...)`.
+
+The bridge accepts one supplied candidate at a time, normalizes it into a
+canonical `MemoryEvent`, scans it with the existing Memory Firewall
+detector/policy path, appends local diagnostics, and returns a redacted
+summary. The default diagnostics directory is
+`~/.memory-firewall/adapter`; it can be changed with
+`MEMORY_FIREWALL_ADAPTER_DIR` or `--state-dir`. The diagnostics files are:
+
+- `events.jsonl`;
+- `observations.jsonl`.
+
+Those local files may contain raw candidate memory text and raw detector
+evidence. They are local diagnostics, not share artifacts. The CLI and Python
+result summaries omit raw candidate text, raw/proposed content fields, and the
+raw-derived `MemoryEvent` id. The redacted summaries include only row handles,
+recorded bridge version, adapter label, operation, source authority, redacted
+target namespace, level, disposition, finding count, contradiction count, risk
+categories, and detector names.
+
+The generic bridge is deliberately observe-only. It does not discover or scan
+an existing store, replace a provider, suppress native writes, approve memory,
+write trusted ledger state, or claim direct integration with Mem0, Honcho,
+GBrain, LangChain, Letta, Zep, Hermes, a vector database, or any production
+memory backend.
 
 ## Adapter Capability Surface
 

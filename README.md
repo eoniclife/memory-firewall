@@ -14,12 +14,13 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository's runtime/schema surface is MF-20: a first observe-only Hermes
+This repository's runtime/schema surface is MF-21: a generic local adapter
+bridge over one supplied memory candidate, plus the first observe-only Hermes
 hook alpha, Hermes user-plugin shim installer, redacted recent-observations
 readout, local Hermes checkup/report, calibrated signal levels from real Hermes
 dogfood, and version-aware diagnostics over the existing Memory Firewall
-scan/detector/report surfaces. MF-20 adds an explicit current-version-only
-diagnostics lens for upgrade and first-run clarity.
+scan/detector/report surfaces. MF-21 adds a small observe-only bridge so custom
+agents can submit one candidate without handcrafting full `MemoryEvent` JSON.
 
 Implemented now:
 
@@ -54,14 +55,18 @@ Implemented now:
   labels in redacted diagnostics;
 - current-version-only Hermes observations and report filters that preserve
   all-history counts while narrowing the returned row lens;
+- a generic local adapter bridge that normalizes one supplied candidate into a
+  `MemoryEvent`, scans it, persists local private diagnostics, and returns a
+  redacted result;
+- redacted generic adapter observations readout;
 - adapter capability report model and schema;
 - a built-in fake adapter conformance probe;
-- machine-readable event/finding/detector/state-analysis/scan/review/demo/proxy/report/Hermes
+- machine-readable event/finding/detector/state-analysis/scan/review/demo/proxy/report/adapter/Hermes
   checkup, report, status, and observations schemas;
 - risk taxonomy and claim budget;
 - CLI commands for `doctor`, `schema`, `risks`, `claims`, `policy`, `detect`,
-  `analyze`, `scan`, `watch`, `review`, `demo`, `proxy`, `report`, `hermes`, and
-  `conformance`;
+  `analyze`, `scan`, `watch`, `review`, `demo`, `proxy`, `report`, `adapter`,
+  `hermes`, and `conformance`;
 - CI, package metadata, and review packet.
 
 Not implemented yet:
@@ -70,7 +75,8 @@ Not implemented yet:
 - real framework quarantine or adapter write suppression;
 - trusted ledger writes;
 - hosted HTML reports;
-- framework adapters beyond the Hermes observe-only hook alpha;
+- framework-specific adapters beyond the Hermes observe-only hook alpha and the
+  generic one-candidate local bridge;
 - enforce mode outside the built-in reference substrate.
 
 ## Install For Development
@@ -92,6 +98,8 @@ uv run --python 3.12 --extra dev memory-firewall schema demo-result
 uv run --python 3.12 --extra dev memory-firewall schema reference-proxy-result
 uv run --python 3.12 --extra dev memory-firewall schema report-result
 uv run --python 3.12 --extra dev memory-firewall schema redacted-report-export
+uv run --python 3.12 --extra dev memory-firewall schema adapter-observe-result
+uv run --python 3.12 --extra dev memory-firewall schema adapter-observations
 uv run --python 3.12 --extra dev memory-firewall schema hermes-checkup
 uv run --python 3.12 --extra dev memory-firewall schema hermes-report
 uv run --python 3.12 --extra dev memory-firewall schema hermes-status
@@ -113,6 +121,8 @@ uv run --python 3.12 --extra dev memory-firewall proxy reference --mode observe 
 uv run --python 3.12 --extra dev memory-firewall proxy reference --mode overlay --json
 uv run --python 3.12 --extra dev memory-firewall proxy reference --mode enforce --json
 uv run --python 3.12 --extra dev memory-firewall report demo --out ./memory-integrity-report --json
+uv run --python 3.12 --extra dev memory-firewall adapter observe-memory --content "Remember that the user prefers local tools." --target profile --source-authority untrusted --json
+uv run --python 3.12 --extra dev memory-firewall adapter observations --limit 20 --json
 uv run --python 3.12 --extra dev memory-firewall hermes checkup --json
 uv run --python 3.12 --extra dev memory-firewall hermes report --out ./hermes-memory-report --json
 uv run --python 3.12 --extra dev memory-firewall hermes report --current-version-only --out ./hermes-memory-report-current --json
@@ -121,6 +131,29 @@ uv run --python 3.12 --extra dev memory-firewall hermes observations --limit 20 
 uv run --python 3.12 --extra dev memory-firewall hermes observations --current-version-only --limit 20 --json
 uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 ```
+
+## Generic Adapter Bridge
+
+Use the MF-21 bridge when an agent or script has one memory candidate and wants
+Memory Firewall diagnostics without building full `MemoryEvent` JSON by hand.
+
+```bash
+memory-firewall adapter observe-memory \
+  --content "Remember that the user prefers local tools." \
+  --target profile \
+  --source-authority untrusted \
+  --json
+
+memory-firewall adapter observations --limit 20 --json
+```
+
+The bridge writes local private diagnostics under
+`~/.memory-firewall/adapter` by default. Those local JSONL files may contain raw
+candidate memory text. The command output is a redacted summary and does not
+include raw/proposed content or raw-derived event ids. The bridge is
+observe-only: it does not scan existing stores, replace memory providers,
+suppress writes, approve memories, or claim direct support for Mem0, Honcho,
+GBrain, LangChain, Letta, Zep, or vector databases.
 
 ## Hermes Hook Alpha
 
@@ -321,6 +354,15 @@ observations and reports. The filtered commands preserve all-history totals whil
 showing `matching_*` counts and returned rows for the selected scope, so upgrade
 checks can focus on the newly installed adapter without deleting or hiding legacy
 diagnostics.
+
+MF-21 adds `memory-firewall adapter observe-memory --content ... --target ...
+--source-authority untrusted --json` and `memory-firewall adapter observations
+--json`. This is a generic local bridge for custom agents and scripts: it
+normalizes one supplied candidate into a `MemoryEvent`, scans it, appends local
+private diagnostics under `~/.memory-firewall/adapter` by default, and returns a
+redacted observation summary. It remains observe-only and does not scan existing
+stores, replace a provider, suppress writes, or claim framework-specific
+support for Mem0, Honcho, GBrain, LangChain, Letta, Zep, or vector databases.
 
 ## Relationship To Agent Memory Contracts
 

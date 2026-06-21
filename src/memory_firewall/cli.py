@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from .adapters import demo_memory_adapter
+from .adapter_bridge import observe_memory_candidate, recent_adapter_observations
 from .analysis import MemoryStateAssertion, analyze_memory_state
 from .claim_budget import claim_budget
 from .conformance import run_adapter_conformance
@@ -25,7 +26,7 @@ from .hermes import (
     summarize_hermes_observations,
     write_hermes_report_bundle,
 )
-from .models import MemoryEvent
+from .models import MemoryEvent, MemoryOperation, SourceAuthority, SourceType
 from .policy import DISPOSITION_ORDER, SEVERITY_ORDER, PolicyConfig
 from .proxy import ProxyMode, run_reference_proxy
 from .report import generate_demo_report, write_report_bundle
@@ -45,6 +46,8 @@ from .scan import (
     watch_stdin_events,
 )
 from .schema import (
+    adapter_bridge_observations_schema,
+    adapter_bridge_observe_result_schema,
     adapter_capability_report_schema,
     detector_pack_schema,
     detector_result_schema,
@@ -120,6 +123,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "reference-proxy-result",
             "report-result",
             "redacted-report-export",
+            "adapter-observe-result",
+            "adapter-observations",
             "hermes-checkup",
             "hermes-report",
             "hermes-status",
@@ -352,6 +357,91 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     report_demo_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    adapter_parser = subparsers.add_parser(
+        "adapter",
+        help="Observe one generic local memory candidate.",
+    )
+    adapter_subparsers = adapter_parser.add_subparsers(
+        dest="adapter_command",
+        required=True,
+    )
+    adapter_observe_parser = adapter_subparsers.add_parser(
+        "observe-memory",
+        help="Normalize, scan, and persist one supplied memory candidate.",
+    )
+    content_source = adapter_observe_parser.add_mutually_exclusive_group(required=True)
+    content_source.add_argument(
+        "--content",
+        help="Candidate memory content supplied by the calling agent.",
+    )
+    content_source.add_argument(
+        "--content-file",
+        help="File containing candidate memory content supplied by the calling agent.",
+    )
+    adapter_observe_parser.add_argument(
+        "--target",
+        default="memory",
+        help="Target namespace label for this candidate.",
+    )
+    adapter_observe_parser.add_argument(
+        "--actor",
+        default="agent:local",
+        help="Actor label for this candidate.",
+    )
+    adapter_observe_parser.add_argument(
+        "--scope",
+        default="local",
+        help="User or tenant scope label for this candidate.",
+    )
+    adapter_observe_parser.add_argument(
+        "--source-type",
+        choices=tuple(item.value for item in SourceType),
+        default=SourceType.UNKNOWN.value,
+        help="Source type for the candidate.",
+    )
+    adapter_observe_parser.add_argument(
+        "--source-id",
+        default="adapter-bridge",
+        help="Source id for the candidate.",
+    )
+    adapter_observe_parser.add_argument(
+        "--source-authority",
+        choices=tuple(item.value for item in SourceAuthority),
+        default=SourceAuthority.UNTRUSTED.value,
+        help="Source authority for the candidate.",
+    )
+    adapter_observe_parser.add_argument(
+        "--operation",
+        choices=tuple(item.value for item in MemoryOperation),
+        default=MemoryOperation.CREATE.value,
+        help="Memory operation requested by the calling agent.",
+    )
+    adapter_observe_parser.add_argument(
+        "--adapter-name",
+        default="local-adapter",
+        help="Local adapter label to store with the observation.",
+    )
+    adapter_observe_parser.add_argument(
+        "--state-dir",
+        help="Directory for local private generic adapter diagnostics.",
+    )
+    adapter_observe_parser.add_argument("--json", action="store_true", dest="as_json")
+    adapter_observations_parser = adapter_subparsers.add_parser(
+        "observations",
+        help="Show recent redacted generic adapter observations.",
+    )
+    adapter_observations_parser.add_argument(
+        "--state-dir",
+        help="Directory containing local generic adapter diagnostics.",
+    )
+    adapter_observations_parser.add_argument(
+        "--limit",
+        type=_positive_int,
+        default=20,
+        help="Maximum number of recent observations to show.",
+    )
+    adapter_observations_parser.add_argument("--json", action="store_true", dest="as_json")
+
     hermes_parser = subparsers.add_parser(
         "hermes",
         help="Inspect the observe-only Hermes hook integration.",
@@ -522,6 +612,10 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = report_result_schema()
     elif name == "redacted-report-export":
         payload = redacted_report_export_schema()
+    elif name == "adapter-observe-result":
+        payload = adapter_bridge_observe_result_schema()
+    elif name == "adapter-observations":
+        payload = adapter_bridge_observations_schema()
     elif name == "hermes-checkup":
         payload = hermes_checkup_schema()
     elif name == "hermes-report":
@@ -936,6 +1030,107 @@ def _run_report_demo(output_dir: str, as_json: bool, stdout: TextIO) -> int:
     return 0
 
 
+def _candidate_content(content: str | None, content_file: str | None) -> str:
+    if content is not None:
+        return content
+    if content_file is not None:
+        return Path(content_file).read_text(encoding="utf-8")
+    raise ValueError("either content or content_file is required")
+
+
+def _run_adapter_observe_memory(
+    content: str | None,
+    content_file: str | None,
+    target_namespace: str,
+    actor: str,
+    user_or_tenant_scope: str,
+    source_type: str,
+    source_id: str,
+    source_authority: str,
+    operation: str,
+    adapter_name: str,
+    state_dir: str | None,
+    as_json: bool,
+    stdout: TextIO,
+) -> int:
+    result = observe_memory_candidate(
+        content=_candidate_content(content, content_file),
+        target_namespace=target_namespace,
+        actor=actor,
+        user_or_tenant_scope=user_or_tenant_scope,
+        source_type=SourceType(source_type),
+        source_id=source_id,
+        source_authority=SourceAuthority(source_authority),
+        operation=MemoryOperation(operation),
+        adapter_name=adapter_name,
+        state_dir=state_dir,
+    )
+    if as_json:
+        _print_json(result.to_dict(), stdout)
+    else:
+        item = result.observation
+        categories = ", ".join(item.risk_categories) or "none"
+        detectors = ", ".join(item.detector_names) or "none"
+        print(f"{result.bridge_version}: adapter observe-memory", file=stdout)
+        print(f"- state dir: {result.state_dir}", file=stdout)
+        print(f"- adapter: {item.adapter_name}", file=stdout)
+        print(f"- row: {item.row_number}", file=stdout)
+        print(f"- handle: {item.event_ref}", file=stdout)
+        print(f"- target: {item.target_namespace}", file=stdout)
+        print(f"- source authority: {item.source_authority}", file=stdout)
+        print(f"- operation: {item.operation}", file=stdout)
+        print(f"- level: {item.level}", file=stdout)
+        print(f"- disposition: {item.highest_disposition}", file=stdout)
+        print(f"- findings: {item.finding_count}", file=stdout)
+        print(f"- contradictions: {item.contradiction_count}", file=stdout)
+        print(f"- risks: {categories}", file=stdout)
+        print(f"- detectors: {detectors}", file=stdout)
+        print("- observe-only: true", file=stdout)
+        print("- raw content included: false", file=stdout)
+    return 1 if result.observation.level == "high_risk" else 0
+
+
+def _run_adapter_observations(
+    state_dir: str | None,
+    limit: int,
+    as_json: bool,
+    stdout: TextIO,
+) -> int:
+    result = recent_adapter_observations(state_dir=state_dir, limit=limit)
+    if as_json:
+        _print_json(result.to_dict(), stdout)
+    else:
+        print(f"{result.bridge_version}: adapter observations", file=stdout)
+        print(f"- state dir: {result.state_dir}", file=stdout)
+        print(f"- total observations: {result.total_observations}", file=stdout)
+        print(f"- high-risk: {result.high_risk_observations}", file=stdout)
+        print(f"- warn: {result.warn_observations}", file=stdout)
+        print(f"- pass: {result.pass_observations}", file=stdout)
+        print(f"- returned: {result.returned_observations}", file=stdout)
+        print("- observe-only: true", file=stdout)
+        print("- raw content included: false", file=stdout)
+        for item in result.observations:
+            categories = ", ".join(item.risk_categories) or "none"
+            detectors = ", ".join(item.detector_names) or "none"
+            print(
+                f"- #{item.row_number} {item.recorded_at} "
+                f"{item.level}/{item.highest_disposition} "
+                f"{item.adapter_name} -> {item.target_namespace}",
+                file=stdout,
+            )
+            print(f"  version: {item.recorded_bridge_version}", file=stdout)
+            print(f"  handle: {item.event_ref}", file=stdout)
+            print(
+                f"  findings: {item.finding_count}; "
+                f"contradictions: {item.contradiction_count}; "
+                f"risks: {categories}",
+                file=stdout,
+            )
+            print(f"  detectors: {detectors}", file=stdout)
+    has_high_risk = any(item.level == "high_risk" for item in result.observations)
+    return 1 if has_high_risk else 0
+
+
 def _run_hermes_status(
     state_dir: str | None,
     as_json: bool,
@@ -1277,6 +1472,38 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sys.stdout,
             )
         parser.error(f"unknown report command: {report_command}")
+    if args.command == "adapter":
+        adapter_command = str(args.adapter_command)
+        if adapter_command == "observe-memory":
+            state_dir = None if args.state_dir is None else str(args.state_dir)
+            content = None if args.content is None else str(args.content)
+            content_file = (
+                None if args.content_file is None else str(args.content_file)
+            )
+            return _run_adapter_observe_memory(
+                content,
+                content_file,
+                str(args.target),
+                str(args.actor),
+                str(args.scope),
+                str(args.source_type),
+                str(args.source_id),
+                str(args.source_authority),
+                str(args.operation),
+                str(args.adapter_name),
+                state_dir,
+                bool(args.as_json),
+                sys.stdout,
+            )
+        if adapter_command == "observations":
+            state_dir = None if args.state_dir is None else str(args.state_dir)
+            return _run_adapter_observations(
+                state_dir,
+                int(args.limit),
+                bool(args.as_json),
+                sys.stdout,
+            )
+        parser.error(f"unknown adapter command: {adapter_command}")
     if args.command == "hermes":
         hermes_command = str(args.hermes_command)
         if hermes_command == "status":

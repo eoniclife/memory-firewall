@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .adapter_bridge import ADAPTER_BRIDGE_VERSION
 from .adapters import AdapterCapability
 from .analysis import ANALYSIS_VERSION, TrustedStateAction
 from .claim_budget import claim_budget
@@ -45,7 +46,7 @@ from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-20"
+SCHEMA_VERSION = "mf-21"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -1696,6 +1697,142 @@ def hermes_observations_schema() -> dict[str, Any]:
     }
 
 
+def _adapter_bridge_observation_summary_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "bridge_version",
+            "recorded_bridge_version",
+            "row_number",
+            "recorded_at",
+            "adapter_name",
+            "event_ref",
+            "operation",
+            "source_authority",
+            "target_namespace",
+            "level",
+            "highest_disposition",
+            "finding_count",
+            "contradiction_count",
+            "risk_categories",
+            "detector_names",
+        ],
+        "properties": {
+            "bridge_version": {"const": ADAPTER_BRIDGE_VERSION},
+            "recorded_bridge_version": {"type": "string", "minLength": 1},
+            "row_number": {"type": "integer", "minimum": 1},
+            "recorded_at": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": RFC3339_TIMESTAMP_PATTERN,
+                    },
+                    {"const": "unavailable-recorded-at"},
+                ],
+            },
+            "adapter_name": {"type": "string", "minLength": 1},
+            "event_ref": {
+                "type": "string",
+                "pattern": r"^adapter-observation-row-[1-9][0-9]*$",
+            },
+            "operation": {"type": "string", "enum": _enum_values(MemoryOperation)},
+            "source_authority": {
+                "type": "string",
+                "enum": _enum_values(SourceAuthority),
+            },
+            "target_namespace": {"type": "string", "minLength": 1},
+            "level": {"type": "string", "enum": _enum_values(ScanEventLevel)},
+            "highest_disposition": {
+                "type": "string",
+                "enum": _enum_values(RecommendedDisposition),
+            },
+            "finding_count": {"type": "integer", "minimum": 0},
+            "contradiction_count": {"type": "integer", "minimum": 0},
+            "risk_categories": {
+                "type": "array",
+                "items": {"type": "string", "enum": _enum_values(RiskCategory)},
+            },
+            "detector_names": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+            },
+        },
+    }
+
+
+def adapter_bridge_observe_result_schema() -> dict[str, Any]:
+    """Return the generic adapter observe-memory result JSON schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-observe-result.mf-21.json",
+        "title": "AdapterBridgeObserveResult",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "bridge_version",
+            "state_dir",
+            "observation",
+            "observe_only",
+            "production_enforcement",
+            "raw_content_included",
+        ],
+        "properties": {
+            "bridge_version": {"const": ADAPTER_BRIDGE_VERSION},
+            "state_dir": {"type": "string", "minLength": 1},
+            "observation": _adapter_bridge_observation_summary_schema(),
+            "observe_only": {"const": True},
+            "production_enforcement": {"const": False},
+            "raw_content_included": {"const": False},
+        },
+    }
+
+
+def adapter_bridge_observations_schema() -> dict[str, Any]:
+    """Return the redacted generic adapter observations list JSON schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-observations.mf-21.json",
+        "title": "AdapterBridgeObservations",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "bridge_version",
+            "state_dir",
+            "limit",
+            "total_observations",
+            "high_risk_observations",
+            "warn_observations",
+            "pass_observations",
+            "returned_observations",
+            "observations",
+            "observe_only",
+            "production_enforcement",
+            "raw_content_included",
+        ],
+        "properties": {
+            "bridge_version": {"const": ADAPTER_BRIDGE_VERSION},
+            "state_dir": {"type": "string", "minLength": 1},
+            "limit": {"type": "integer", "minimum": 1},
+            "total_observations": {"type": "integer", "minimum": 0},
+            "high_risk_observations": {"type": "integer", "minimum": 0},
+            "warn_observations": {"type": "integer", "minimum": 0},
+            "pass_observations": {"type": "integer", "minimum": 0},
+            "returned_observations": {"type": "integer", "minimum": 0},
+            "observations": {
+                "type": "array",
+                "items": _adapter_bridge_observation_summary_schema(),
+            },
+            "observe_only": {"const": True},
+            "production_enforcement": {"const": False},
+            "raw_content_included": {"const": False},
+        },
+    }
+
+
 def _hermes_checkup_check_schema() -> dict[str, Any]:
     return {
         "type": "object",
@@ -1976,6 +2113,8 @@ def schema_bundle() -> dict[str, Any]:
         "reference_proxy_result_schema": reference_proxy_result_schema(),
         "report_result_schema": report_result_schema(),
         "redacted_report_export_schema": redacted_report_export_schema(),
+        "adapter_bridge_observe_result_schema": adapter_bridge_observe_result_schema(),
+        "adapter_bridge_observations_schema": adapter_bridge_observations_schema(),
         "hermes_checkup_schema": hermes_checkup_schema(),
         "hermes_report_schema": hermes_report_schema(),
         "hermes_status_schema": hermes_status_schema(),
