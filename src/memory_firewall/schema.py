@@ -17,6 +17,7 @@ from .hermes import (
     HERMES_OBSERVATION_SCOPE_CURRENT_VERSION,
     HERMES_REPORT_VERSION,
 )
+from .lineage import CandidateScanStatus, LINEAGE_VERSION, LineageLinkStatus
 from .models import (
     EvidenceField,
     MAX_METADATA_ENTRIES,
@@ -2298,6 +2299,169 @@ def hermes_report_schema() -> dict[str, Any]:
     }
 
 
+def lineage_report_schema() -> dict[str, Any]:
+    """Return the MF-27 candidate-level lineage report schema."""
+
+    candidate_verdict_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "lineage_id",
+            "candidate_id",
+            "source_event_id",
+            "source_digest",
+            "content_digest",
+            "provider_memory_id",
+            "persisted_record_id",
+            "retrieval_event_id",
+            "scope",
+            "declared_authority",
+            "verified_authority_status",
+            "link_status",
+            "persisted",
+            "retrieved",
+            "downstream_used",
+            "scan_status",
+            "memory_firewall_event_id",
+            "memory_firewall_disposition",
+            "memory_firewall_finding_count",
+            "limitations",
+        ],
+        "properties": {
+            "lineage_id": {"type": "string", "minLength": 1},
+            "candidate_id": {"type": "string", "minLength": 1},
+            "source_event_id": {"type": "string", "minLength": 1},
+            "source_digest": {
+                "type": ["string", "null"],
+                "pattern": "^sha256:[0-9a-f]{64}$",
+            },
+            "content_digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$",
+            },
+            "provider_memory_id": {"type": ["string", "null"]},
+            "persisted_record_id": {"type": ["string", "null"]},
+            "retrieval_event_id": {"type": ["string", "null"]},
+            "scope": {"type": "string", "minLength": 1},
+            "declared_authority": {
+                "type": "string",
+                "enum": _enum_values(SourceAuthority),
+            },
+            "verified_authority_status": {"type": "string", "minLength": 1},
+            "link_status": {
+                "type": "string",
+                "enum": _enum_values(LineageLinkStatus),
+            },
+            "persisted": {"type": "boolean"},
+            "retrieved": {"type": "boolean"},
+            "downstream_used": {"type": "boolean"},
+            "scan_status": {
+                "type": "string",
+                "enum": _enum_values(CandidateScanStatus),
+            },
+            "memory_firewall_event_id": {"type": ["string", "null"]},
+            "memory_firewall_disposition": {
+                "type": ["string", "null"],
+                "enum": [None, *(_enum_values(RecommendedDisposition))],
+            },
+            "memory_firewall_finding_count": {"type": "integer", "minimum": 0},
+            "limitations": {"type": "array", "items": {"type": "string"}},
+        },
+    }
+    issue_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "code",
+            "message",
+            "candidate_id",
+            "provider_memory_id",
+            "persisted_record_id",
+            "retrieval_event_id",
+        ],
+        "properties": {
+            "code": {"type": "string", "minLength": 1},
+            "message": {"type": "string", "minLength": 1},
+            "candidate_id": {"type": ["string", "null"]},
+            "provider_memory_id": {"type": ["string", "null"]},
+            "persisted_record_id": {"type": ["string", "null"]},
+            "retrieval_event_id": {"type": ["string", "null"]},
+        },
+    }
+    summary_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "source_events",
+            "candidates",
+            "persisted_candidates",
+            "retrieved_candidates",
+            "downstream_used_candidates",
+            "candidate_level_verdicts",
+            "case_level_only_candidates",
+            "unscanned_candidates",
+            "unmatched_persisted_records",
+            "unmatched_retrievals",
+            "scope_mismatches",
+            "highest_candidate_disposition",
+        ],
+        "properties": {
+            "source_events": {"type": "integer", "minimum": 0},
+            "candidates": {"type": "integer", "minimum": 0},
+            "persisted_candidates": {"type": "integer", "minimum": 0},
+            "retrieved_candidates": {"type": "integer", "minimum": 0},
+            "downstream_used_candidates": {"type": "integer", "minimum": 0},
+            "candidate_level_verdicts": {"type": "integer", "minimum": 0},
+            "case_level_only_candidates": {"type": "integer", "minimum": 0},
+            "unscanned_candidates": {"type": "integer", "minimum": 0},
+            "unmatched_persisted_records": {"type": "integer", "minimum": 0},
+            "unmatched_retrievals": {"type": "integer", "minimum": 0},
+            "scope_mismatches": {"type": "integer", "minimum": 0},
+            "highest_candidate_disposition": {
+                "type": "string",
+                "enum": _enum_values(RecommendedDisposition),
+            },
+        },
+    }
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": (
+            "https://github.com/eoniclife/memory-firewall/"
+            "schemas/lineage-report.mf-27.json"
+        ),
+        "title": "LineageReport",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "lineage_version",
+            "provider",
+            "provider_version",
+            "summary",
+            "candidate_verdicts",
+            "issues",
+            "non_goals",
+            "metadata",
+        ],
+        "properties": {
+            "lineage_version": {"const": LINEAGE_VERSION},
+            "provider": {"type": "string", "minLength": 1},
+            "provider_version": {"type": "string", "minLength": 1},
+            "summary": summary_schema,
+            "candidate_verdicts": {
+                "type": "array",
+                "items": candidate_verdict_schema,
+            },
+            "issues": {"type": "array", "items": issue_schema},
+            "non_goals": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+            },
+            "metadata": _metadata_schema(),
+        },
+    }
+
+
 def schema_bundle() -> dict[str, Any]:
     """Return the complete public contract bundle."""
 
@@ -2332,6 +2496,7 @@ def schema_bundle() -> dict[str, Any]:
         "hermes_report_schema": hermes_report_schema(),
         "hermes_status_schema": hermes_status_schema(),
         "hermes_observations_schema": hermes_observations_schema(),
+        "lineage_report_schema": lineage_report_schema(),
         "default_detector_pack": default_detector_pack().to_dict(),
         "risk_taxonomy": [item.to_dict() for item in risk_taxonomy()],
         "claim_budget": claim_budget().to_dict(),

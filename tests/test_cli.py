@@ -35,6 +35,7 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     assert payload["hermes_report_schema"]["title"] == "HermesReport"
     assert payload["hermes_status_schema"]["title"] == "HermesStatus"
     assert payload["hermes_observations_schema"]["title"] == "HermesObservations"
+    assert payload["lineage_report_schema"]["title"] == "LineageReport"
 
 
 def test_adapter_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
@@ -208,6 +209,14 @@ def test_adapter_report_schema_command_prints_json(capsys) -> None:  # type: ign
     assert payload["properties"]["raw_content_included"]["const"] is False
     assert payload["properties"]["observe_only"]["const"] is True
     assert payload["properties"]["production_enforcement"]["const"] is False
+
+
+def test_lineage_report_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "lineage-report"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "LineageReport"
+    assert payload["properties"]["lineage_version"]["const"] == "mf-27"
 
 
 def test_adapter_observe_memory_json_command_redacts_candidate(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
