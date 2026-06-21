@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import re
@@ -23,14 +24,25 @@ from .models import (
     SourceType,
 )
 from .scan import ScanEventLevel, ScanEventResult, scan_event
+from .version import __version__
 
-ADAPTER_BRIDGE_VERSION = "mf-21"
+ADAPTER_BRIDGE_VERSION = "mf-22"
+ADAPTER_BRIDGE_REPORT_VERSION = "mf-22"
 ADAPTER_BRIDGE_DIR_ENV = "MEMORY_FIREWALL_ADAPTER_DIR"
 ADAPTER_BRIDGE_EVENTS_FILENAME = "events.jsonl"
 ADAPTER_BRIDGE_OBSERVATIONS_FILENAME = "observations.jsonl"
+ADAPTER_BRIDGE_REPORT_JSON_FILENAME = "report.json"
+ADAPTER_BRIDGE_REPORT_HTML_FILENAME = "index.html"
+ADAPTER_BRIDGE_REDACTED_EXPORT_FILENAME = "redacted-share.json"
 ADAPTER_BRIDGE_STATE_DIR_MODE = 0o700
 ADAPTER_BRIDGE_STATE_FILE_MODE = 0o600
 _SAFE_TARGET_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_PUBLIC_LABEL_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._:-]{0,63}$")
+_PUBLIC_BRIDGE_VERSION_RE = re.compile(r"^mf-[0-9]{1,4}$")
+_SECRETISH_TOKEN_RE = re.compile(
+    r"(?i)(^sk-[A-Za-z0-9_-]{8,}|^ghp_[A-Za-z0-9_]{12,}|"
+    r"^xox[baprs]-[A-Za-z0-9-]{8,}|token|secret|password|api[_-]?key|bearer)"
+)
 _RFC3339_TIMESTAMP_RE = re.compile(RFC3339_TIMESTAMP_PATTERN)
 _PUBLIC_TARGET_NAMESPACES = frozenset(
     (
@@ -61,6 +73,7 @@ _PUBLIC_DIAGNOSTIC_DETECTOR_NAMES = frozenset(
         "diagnostic-non-object-json",
     )
 )
+_ADAPTER_REPORT_STATUSES = frozenset(("ready", "empty", "attention"))
 
 
 def _utc_timestamp() -> str:
@@ -141,10 +154,20 @@ def _safe_target_namespace(value: object) -> str:
     return "redacted-target"
 
 
-def _safe_token(value: object, *, default: str) -> str:
-    if isinstance(value, str) and _SAFE_TARGET_RE.fullmatch(value):
+def _safe_public_label(value: object, *, default: str) -> str:
+    if (
+        isinstance(value, str)
+        and _PUBLIC_LABEL_RE.fullmatch(value)
+        and not _SECRETISH_TOKEN_RE.search(value)
+    ):
         return value
     return default
+
+
+def _safe_bridge_version(value: object) -> str:
+    if isinstance(value, str) and _PUBLIC_BRIDGE_VERSION_RE.fullmatch(value):
+        return value
+    return "unknown-version"
 
 
 def _safe_recorded_at(value: object) -> str:
@@ -425,6 +448,246 @@ class AdapterBridgeObserveResult:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class AdapterBridgeReportSetup:
+    """Small setup snapshot for a generic adapter diagnostics report."""
+
+    overall_status: str
+    state_dir_exists: bool
+    events_file_exists: bool
+    observations_file_exists: bool
+    state_dir_mode: str | None
+    events_file_mode: str | None
+    observations_file_mode: str | None
+
+    def __post_init__(self) -> None:
+        if self.overall_status not in _ADAPTER_REPORT_STATUSES:
+            raise ValueError("overall_status must be ready, empty, or attention")
+        for field_name in (
+            "state_dir_exists",
+            "events_file_exists",
+            "observations_file_exists",
+        ):
+            if not isinstance(getattr(self, field_name), bool):
+                raise TypeError(f"{field_name} must be bool")
+        for field_name in (
+            "state_dir_mode",
+            "events_file_mode",
+            "observations_file_mode",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and (
+                not isinstance(value, str) or not re.fullmatch(r"[0-7]{4}", value)
+            ):
+                raise ValueError(f"{field_name} must be an octal mode or null")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "overall_status": self.overall_status,
+            "state_dir_exists": self.state_dir_exists,
+            "events_file_exists": self.events_file_exists,
+            "observations_file_exists": self.observations_file_exists,
+            "state_dir_mode": self.state_dir_mode,
+            "events_file_mode": self.events_file_mode,
+            "observations_file_mode": self.observations_file_mode,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AdapterBridgeReportSummary:
+    """Compact counters for a generic adapter diagnostics report."""
+
+    total_observations: int
+    pass_observations: int
+    warn_observations: int
+    high_risk_observations: int
+    returned_observations: int
+    report_contains_raw_content: bool = False
+    hosted_dashboard: bool = False
+    production_enforcement: bool = False
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "total_observations",
+            "pass_observations",
+            "warn_observations",
+            "high_risk_observations",
+            "returned_observations",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        if self.returned_observations > self.total_observations:
+            raise ValueError("returned_observations cannot exceed total_observations")
+        for field_name in (
+            "report_contains_raw_content",
+            "hosted_dashboard",
+            "production_enforcement",
+        ):
+            value = getattr(self, field_name)
+            if value is not False:
+                raise ValueError(f"{field_name} must be false")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "total_observations": self.total_observations,
+            "pass_observations": self.pass_observations,
+            "warn_observations": self.warn_observations,
+            "high_risk_observations": self.high_risk_observations,
+            "returned_observations": self.returned_observations,
+            "report_contains_raw_content": self.report_contains_raw_content,
+            "hosted_dashboard": self.hosted_dashboard,
+            "production_enforcement": self.production_enforcement,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AdapterBridgeReportResult:
+    """Local redacted report over generic adapter diagnostics."""
+
+    report_version: str
+    bridge_version: str
+    package_version: str
+    title: str
+    generated_at: str
+    state_dir: str
+    setup: AdapterBridgeReportSetup
+    summary: AdapterBridgeReportSummary
+    observations: AdapterBridgeObservationList
+    level_counts: Mapping[str, int]
+    risk_category_counts: Mapping[str, int]
+    detector_counts: Mapping[str, int]
+    next_steps: tuple[str, ...]
+    limitations: tuple[str, ...]
+    observe_only: bool = True
+    production_enforcement: bool = False
+    raw_content_included: bool = False
+
+    def __post_init__(self) -> None:
+        if self.report_version != ADAPTER_BRIDGE_REPORT_VERSION:
+            raise ValueError(
+                f"report_version must be {ADAPTER_BRIDGE_REPORT_VERSION}"
+            )
+        if self.bridge_version != ADAPTER_BRIDGE_VERSION:
+            raise ValueError(f"bridge_version must be {ADAPTER_BRIDGE_VERSION}")
+        for field_name in ("package_version", "title", "generated_at", "state_dir"):
+            if not getattr(self, field_name):
+                raise ValueError(f"{field_name} must not be empty")
+        if not isinstance(self.setup, AdapterBridgeReportSetup):
+            raise TypeError("setup must be AdapterBridgeReportSetup")
+        if not isinstance(self.summary, AdapterBridgeReportSummary):
+            raise TypeError("summary must be AdapterBridgeReportSummary")
+        if not isinstance(self.observations, AdapterBridgeObservationList):
+            raise TypeError("observations must be AdapterBridgeObservationList")
+        for field_name in (
+            "level_counts",
+            "risk_category_counts",
+            "detector_counts",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, Mapping):
+                raise TypeError(f"{field_name} must be a mapping")
+            for key, count in value.items():
+                if not isinstance(key, str) or not key:
+                    raise ValueError(f"{field_name} keys must be non-empty strings")
+                if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+                    raise ValueError(
+                        f"{field_name} values must be non-negative integers"
+                    )
+        for field_name in ("next_steps", "limitations"):
+            value = getattr(self, field_name)
+            if isinstance(value, str) or not isinstance(value, tuple):
+                raise TypeError(f"{field_name} must be a tuple")
+            if any(not isinstance(item, str) or not item for item in value):
+                raise ValueError(f"{field_name} must contain non-empty strings")
+        for field_name in (
+            "observe_only",
+            "production_enforcement",
+            "raw_content_included",
+        ):
+            if not isinstance(getattr(self, field_name), bool):
+                raise TypeError(f"{field_name} must be bool")
+        if self.observe_only is not True:
+            raise ValueError("observe_only must be true")
+        if self.production_enforcement is not False:
+            raise ValueError("production_enforcement must be false")
+        if self.raw_content_included is not False:
+            raise ValueError("raw_content_included must be false")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "report_version": self.report_version,
+            "bridge_version": self.bridge_version,
+            "package_version": self.package_version,
+            "title": self.title,
+            "generated_at": self.generated_at,
+            "state_dir": self.state_dir,
+            "setup": self.setup.to_dict(),
+            "summary": self.summary.to_dict(),
+            "observations": self.observations.to_dict(),
+            "level_counts": dict(sorted(self.level_counts.items())),
+            "risk_category_counts": dict(sorted(self.risk_category_counts.items())),
+            "detector_counts": dict(sorted(self.detector_counts.items())),
+            "next_steps": list(self.next_steps),
+            "limitations": list(self.limitations),
+            "observe_only": self.observe_only,
+            "production_enforcement": self.production_enforcement,
+            "raw_content_included": self.raw_content_included,
+        }
+
+    def to_redacted_share_dict(self) -> dict[str, Any]:
+        observations = self.observations.to_dict()
+        observations["state_dir"] = "redacted-local-path"
+        return {
+            "report_version": self.report_version,
+            "bridge_version": self.bridge_version,
+            "title": self.title,
+            "generated_at": self.generated_at,
+            "local_paths_redacted": True,
+            "state_dir": "redacted-local-path",
+            "raw_content_included": False,
+            "setup": self.setup.to_dict(),
+            "summary": self.summary.to_dict(),
+            "observations": observations,
+            "level_counts": dict(sorted(self.level_counts.items())),
+            "risk_category_counts": dict(sorted(self.risk_category_counts.items())),
+            "detector_counts": dict(sorted(self.detector_counts.items())),
+            "next_steps_present": bool(self.next_steps),
+            "limitations": list(self.limitations),
+            "observe_only": True,
+            "production_enforcement": False,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AdapterBridgeReportBundle:
+    """Files written for a local generic adapter diagnostics report bundle."""
+
+    report: AdapterBridgeReportResult
+    output_dir: Path
+    report_json_path: Path
+    html_path: Path
+    redacted_export_path: Path
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "report_version": self.report.report_version,
+            "bridge_version": self.report.bridge_version,
+            "title": self.report.title,
+            "summary": self.report.summary.to_dict(),
+            "setup": self.report.setup.to_dict(),
+            "files": {
+                "paths_redacted": True,
+                "report_json": self.report_json_path.name,
+                "html": self.html_path.name,
+                "redacted_export": self.redacted_export_path.name,
+            },
+            "observe_only": True,
+            "production_enforcement": False,
+            "raw_content_included": False,
+        }
+
+
 def memory_event_from_adapter_candidate(
     *,
     content: str,
@@ -516,13 +779,13 @@ def _summary_from_row(
     findings = _findings_from_scan_payload(scan_payload)
     return AdapterBridgeObservationSummary(
         bridge_version=ADAPTER_BRIDGE_VERSION,
-        recorded_bridge_version=_safe_token(
-            row.get("bridge_version"),
-            default="unknown-version",
-        ),
+        recorded_bridge_version=_safe_bridge_version(row.get("bridge_version")),
         row_number=row_number,
         recorded_at=_safe_recorded_at(row.get("recorded_at")),
-        adapter_name=_safe_token(row.get("adapter_name"), default="unknown-adapter"),
+        adapter_name=_safe_public_label(
+            row.get("adapter_name"),
+            default="unknown-adapter",
+        ),
         event_ref=f"adapter-observation-row-{row_number}",
         operation=_enum_value(
             event_payload.get("operation"),
@@ -594,6 +857,283 @@ def recent_adapter_observations(
         ),
         returned_observations=len(recent),
         observations=recent,
+    )
+
+
+def _octal_mode(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    return oct(stat.S_IMODE(path.stat().st_mode)).replace("0o", "").zfill(4)
+
+
+def _count_observation_fields(
+    observations: tuple[AdapterBridgeObservationSummary, ...],
+    field_name: str,
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in observations:
+        value = getattr(item, field_name)
+        values: tuple[str, ...]
+        if isinstance(value, str):
+            values = (value,)
+        elif isinstance(value, tuple):
+            values = value
+        else:
+            values = ()
+        for raw in values:
+            if not isinstance(raw, str) or not raw:
+                continue
+            counts[raw] = counts.get(raw, 0) + 1
+    return counts
+
+
+def _adapter_report_setup(
+    *,
+    state_dir: Path,
+    observations: AdapterBridgeObservationList,
+) -> AdapterBridgeReportSetup:
+    events_path = state_dir / ADAPTER_BRIDGE_EVENTS_FILENAME
+    observations_path = state_dir / ADAPTER_BRIDGE_OBSERVATIONS_FILENAME
+    if observations.high_risk_observations > 0:
+        overall_status = "attention"
+    elif observations.total_observations == 0:
+        overall_status = "empty"
+    else:
+        overall_status = "ready"
+    return AdapterBridgeReportSetup(
+        overall_status=overall_status,
+        state_dir_exists=state_dir.exists(),
+        events_file_exists=events_path.exists(),
+        observations_file_exists=observations_path.exists(),
+        state_dir_mode=_octal_mode(state_dir),
+        events_file_mode=_octal_mode(events_path),
+        observations_file_mode=_octal_mode(observations_path),
+    )
+
+
+def _adapter_report_next_steps(
+    *,
+    observations: AdapterBridgeObservationList,
+    limit: int,
+) -> tuple[str, ...]:
+    steps: list[str] = []
+    if observations.total_observations == 0:
+        steps.append(
+            "Run `memory-firewall adapter observe-memory --content ... --target "
+            "memory` from the agent or script that is about to write memory."
+        )
+    elif observations.high_risk_observations > 0:
+        inspection_limit = max(limit, observations.total_observations)
+        steps.append(
+            "Inspect high-risk local rows with "
+            f"`memory-firewall adapter observations --limit {inspection_limit}` "
+            "before "
+            "trusting those remembered facts."
+        )
+    elif observations.warn_observations > 0:
+        steps.append(
+            "Review WARN rows for provenance gaps or malformed diagnostics, then "
+            "reopen this report after another meaningful memory write."
+        )
+    else:
+        steps.append(
+            "Keep the observe-only bridge around the memory write path and reopen "
+            "this report after meaningful agent memory activity."
+        )
+    return tuple(dict.fromkeys(steps))
+
+
+def generate_adapter_report(
+    *,
+    state_dir: str | Path | None = None,
+    limit: int = 50,
+) -> AdapterBridgeReportResult:
+    """Generate a local redacted diagnostics report over generic observations."""
+
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        raise ValueError("limit must be a positive integer")
+    output_dir = _resolve_state_dir(state_dir)
+    observations = recent_adapter_observations(state_dir=output_dir, limit=limit)
+    all_rows = load_adapter_observations(state_dir=output_dir)
+    all_summaries = tuple(
+        _summary_from_row(row, row_number=index)
+        for index, row in enumerate(all_rows, start=1)
+    )
+    setup = _adapter_report_setup(state_dir=output_dir, observations=observations)
+    summary = AdapterBridgeReportSummary(
+        total_observations=observations.total_observations,
+        pass_observations=observations.pass_observations,
+        warn_observations=observations.warn_observations,
+        high_risk_observations=observations.high_risk_observations,
+        returned_observations=observations.returned_observations,
+    )
+    return AdapterBridgeReportResult(
+        report_version=ADAPTER_BRIDGE_REPORT_VERSION,
+        bridge_version=ADAPTER_BRIDGE_VERSION,
+        package_version=__version__,
+        title="Memory Firewall Generic Adapter Report",
+        generated_at=_utc_timestamp(),
+        state_dir=str(output_dir),
+        setup=setup,
+        summary=summary,
+        observations=observations,
+        level_counts=_count_observation_fields(all_summaries, "level"),
+        risk_category_counts=_count_observation_fields(
+            all_summaries,
+            "risk_categories",
+        ),
+        detector_counts=_count_observation_fields(
+            all_summaries,
+            "detector_names",
+        ),
+        next_steps=_adapter_report_next_steps(
+            observations=observations,
+            limit=limit,
+        ),
+        limitations=(
+            "Local static generic adapter diagnostics report only.",
+            "Observation rows are redacted handles; raw and proposed memory content are not included.",
+            "Aggregate level, risk, and detector counts cover all loaded generic adapter observations; the recent rows table obeys the requested limit.",
+            "The generic adapter bridge remains observe-only and does not suppress native memory writes.",
+            "High-risk findings are deterministic integrity signals, not proof of objective truth or adversarial intent.",
+            "The redacted share export removes local filesystem paths by default.",
+        ),
+    )
+
+
+def _render_counter_list(items: Mapping[str, Any]) -> str:
+    rows = []
+    for key in sorted(items):
+        value = items[key]
+        rows.append(
+            f"<li><span>{html.escape(str(key).replace('_', ' '))}</span>"
+            f"<strong>{html.escape(str(value))}</strong></li>"
+        )
+    return "\n".join(rows)
+
+
+def _render_adapter_report_rows(
+    observations: tuple[AdapterBridgeObservationSummary, ...],
+) -> str:
+    rows = []
+    for item in observations:
+        rows.append(
+            "<tr>"
+            f"<td>{item.row_number}</td>"
+            f"<td>{html.escape(item.recorded_bridge_version)}</td>"
+            f"<td>{html.escape(item.recorded_at)}</td>"
+            f"<td>{html.escape(item.level)}</td>"
+            f"<td>{html.escape(item.highest_disposition)}</td>"
+            f"<td>{html.escape(item.adapter_name)}</td>"
+            f"<td>{html.escape(item.target_namespace)}</td>"
+            f"<td>{item.finding_count}</td>"
+            f"<td>{html.escape(', '.join(item.risk_categories) or 'none')}</td>"
+            f"<td>{html.escape(', '.join(item.detector_names) or 'none')}</td>"
+            f"<td>{html.escape(item.event_ref)}</td>"
+            "</tr>"
+        )
+    if rows:
+        return "".join(rows)
+    return (
+        "<tr><td colspan=\"11\">No local generic adapter observations found yet.</td></tr>"
+    )
+
+
+def render_adapter_report_html(report: AdapterBridgeReportResult) -> str:
+    """Render a self-contained local HTML report over generic diagnostics."""
+
+    limitations = "".join(
+        f"<li>{html.escape(item)}</li>" for item in report.limitations
+    )
+    next_steps = "".join(
+        f"<li>{html.escape(item)}</li>" for item in report.next_steps
+    )
+    if not next_steps:
+        next_steps = "<li>No immediate next step.</li>"
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html.escape(report.title)}</title>
+  <style>
+    body {{ font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: #151515; background: #f7f7f4; }}
+    main {{ max-width: 1120px; margin: 0 auto; padding: 32px 20px 48px; }}
+    h1, h2 {{ line-height: 1.15; }}
+    .lede {{ font-size: 1.05rem; max-width: 820px; color: #454545; }}
+    .meta {{ color: #5b5b55; font-size: 0.92rem; }}
+    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 12px; padding: 0; list-style: none; }}
+    .grid li {{ background: white; border: 1px solid #deded8; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }}
+    .grid span {{ color: #5b5b55; font-size: 0.86rem; }}
+    .grid strong {{ font-size: 1.3rem; }}
+    table {{ width: 100%; border-collapse: collapse; background: white; border: 1px solid #deded8; }}
+    th, td {{ padding: 10px 12px; border-bottom: 1px solid #e8e8e2; text-align: left; vertical-align: top; }}
+    th {{ background: #ecece5; font-size: 0.88rem; }}
+    code {{ background: #ecece5; padding: 2px 5px; border-radius: 4px; }}
+  </style>
+</head>
+<body>
+<main>
+  <h1>{html.escape(report.title)}</h1>
+  <p class="lede">This local report summarizes what the observe-only generic adapter bridge has seen in candidate memory writes. It uses redacted row handles and does not include raw candidate memory text.</p>
+  <p class="meta">Generated at {html.escape(report.generated_at)}. Diagnostics: <code>{html.escape(report.state_dir)}</code>.</p>
+  <h2>Setup</h2>
+  <ul class="grid">
+    {_render_counter_list(report.setup.to_dict())}
+  </ul>
+  <h2>Observation Summary</h2>
+  <ul class="grid">
+    {_render_counter_list(report.summary.to_dict())}
+  </ul>
+  <h2>All-History Level Counts</h2>
+  <ul class="grid">
+    {_render_counter_list(report.level_counts or {"none": 0})}
+  </ul>
+  <h2>All-History Risk Categories</h2>
+  <ul class="grid">
+    {_render_counter_list(report.risk_category_counts or {"none": 0})}
+  </ul>
+  <h2>Recent Redacted Observations</h2>
+  <table>
+    <thead><tr><th>Row</th><th>Version</th><th>Recorded</th><th>Level</th><th>Disposition</th><th>Adapter</th><th>Target</th><th>Findings</th><th>Risks</th><th>Detectors</th><th>Handle</th></tr></thead>
+    <tbody>{_render_adapter_report_rows(report.observations.observations)}</tbody>
+  </table>
+  <h2>Next Steps</h2>
+  <ul>{next_steps}</ul>
+  <h2>Limitations</h2>
+  <ul>{limitations}</ul>
+</main>
+</body>
+</html>
+"""
+
+
+def write_adapter_report_bundle(
+    report: AdapterBridgeReportResult,
+    output_dir: str | Path,
+) -> AdapterBridgeReportBundle:
+    """Write a local generic adapter report JSON, HTML, and redacted export."""
+
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    report_json_path = destination / ADAPTER_BRIDGE_REPORT_JSON_FILENAME
+    html_path = destination / ADAPTER_BRIDGE_REPORT_HTML_FILENAME
+    redacted_export_path = destination / ADAPTER_BRIDGE_REDACTED_EXPORT_FILENAME
+    report_json_path.write_text(
+        json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    html_path.write_text(render_adapter_report_html(report), encoding="utf-8")
+    redacted_export_path.write_text(
+        json.dumps(report.to_redacted_share_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return AdapterBridgeReportBundle(
+        report=report,
+        output_dir=destination,
+        report_json_path=report_json_path,
+        html_path=html_path,
+        redacted_export_path=redacted_export_path,
     )
 
 

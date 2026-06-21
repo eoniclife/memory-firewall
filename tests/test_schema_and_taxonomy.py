@@ -46,7 +46,9 @@ from memory_firewall import (
     state_assertion_schema,
     trusted_read_preview_schema,
     adapter_bridge_observations_schema,
+    adapter_bridge_report_schema,
     adapter_bridge_observe_result_schema,
+    generate_adapter_report,
     observe_memory_candidate,
     recent_adapter_observations,
 )
@@ -93,7 +95,7 @@ def test_finding_schema_uses_frozen_risk_taxonomy() -> None:
 def test_schema_bundle_includes_claim_budget() -> None:
     bundle = schema_bundle()
     budget = claim_budget()
-    assert bundle["schema_version"] == "mf-21"
+    assert bundle["schema_version"] == "mf-22"
     assert bundle["claim_budget"]["allowed"] == list(budget.allowed)
     assert any("broadly scan real stores" in item for item in budget.not_allowed)
     assert any("not a benchmark" in item for item in budget.not_allowed)
@@ -113,6 +115,7 @@ def test_schema_bundle_includes_claim_budget() -> None:
     assert "redacted_report_export_schema" in bundle
     assert "adapter_bridge_observe_result_schema" in bundle
     assert "adapter_bridge_observations_schema" in bundle
+    assert "adapter_bridge_report_schema" in bundle
     assert "hermes_checkup_schema" in bundle
     assert "hermes_report_schema" in bundle
     assert "hermes_status_schema" in bundle
@@ -172,6 +175,7 @@ def test_model_outputs_validate_against_exported_schemas(tmp_path) -> None:  # t
     Draft202012Validator.check_schema(redacted_report_export_schema())
     Draft202012Validator.check_schema(adapter_bridge_observe_result_schema())
     Draft202012Validator.check_schema(adapter_bridge_observations_schema())
+    Draft202012Validator.check_schema(adapter_bridge_report_schema())
     Draft202012Validator.check_schema(hermes_checkup_schema())
     Draft202012Validator.check_schema(hermes_report_schema())
     Draft202012Validator.check_schema(hermes_status_schema())
@@ -206,6 +210,12 @@ def test_model_outputs_validate_against_exported_schemas(tmp_path) -> None:  # t
     )
     Draft202012Validator(adapter_bridge_observations_schema()).validate(
         recent_adapter_observations(
+            state_dir=tmp_path / "adapter",
+            limit=20,
+        ).to_dict()
+    )
+    Draft202012Validator(adapter_bridge_report_schema()).validate(
+        generate_adapter_report(
             state_dir=tmp_path / "adapter",
             limit=20,
         ).to_dict()

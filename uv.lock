@@ -491,7 +491,7 @@ wheels = [
 
 [[package]]
 name = "memory-firewall"
-version = "0.1.0.dev21"
+version = "0.1.0.dev22"
 source = { editable = "." }
 dependencies = [
     { name = "agent-memory-contracts" },

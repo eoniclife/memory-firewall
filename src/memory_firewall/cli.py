@@ -11,7 +11,12 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from .adapters import demo_memory_adapter
-from .adapter_bridge import observe_memory_candidate, recent_adapter_observations
+from .adapter_bridge import (
+    generate_adapter_report,
+    observe_memory_candidate,
+    recent_adapter_observations,
+    write_adapter_report_bundle,
+)
 from .analysis import MemoryStateAssertion, analyze_memory_state
 from .claim_budget import claim_budget
 from .conformance import run_adapter_conformance
@@ -47,6 +52,7 @@ from .scan import (
 )
 from .schema import (
     adapter_bridge_observations_schema,
+    adapter_bridge_report_schema,
     adapter_bridge_observe_result_schema,
     adapter_capability_report_schema,
     detector_pack_schema,
@@ -125,6 +131,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "redacted-report-export",
             "adapter-observe-result",
             "adapter-observations",
+            "adapter-report",
             "hermes-checkup",
             "hermes-report",
             "hermes-status",
@@ -441,6 +448,32 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Maximum number of recent observations to show.",
     )
     adapter_observations_parser.add_argument("--json", action="store_true", dest="as_json")
+    adapter_report_parser = adapter_subparsers.add_parser(
+        "report",
+        help="Write a local redacted report over generic adapter diagnostics.",
+    )
+    adapter_report_parser.add_argument(
+        "--state-dir",
+        help="Directory containing local generic adapter diagnostics.",
+    )
+    adapter_report_parser.add_argument(
+        "--out",
+        required=True,
+        help="Directory for report.json, index.html, and redacted-share.json.",
+    )
+    adapter_report_parser.add_argument(
+        "--limit",
+        type=_positive_int,
+        default=50,
+        help="Maximum number of recent observations to include.",
+    )
+    adapter_report_parser.add_argument(
+        "--open",
+        action="store_true",
+        dest="open_report",
+        help="Open the generated local HTML report in the default browser.",
+    )
+    adapter_report_parser.add_argument("--json", action="store_true", dest="as_json")
 
     hermes_parser = subparsers.add_parser(
         "hermes",
@@ -616,6 +649,8 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = adapter_bridge_observe_result_schema()
     elif name == "adapter-observations":
         payload = adapter_bridge_observations_schema()
+    elif name == "adapter-report":
+        payload = adapter_bridge_report_schema()
     elif name == "hermes-checkup":
         payload = hermes_checkup_schema()
     elif name == "hermes-report":
@@ -1131,6 +1166,39 @@ def _run_adapter_observations(
     return 1 if has_high_risk else 0
 
 
+def _run_adapter_report(
+    state_dir: str | None,
+    output_dir: str,
+    limit: int,
+    open_report: bool,
+    as_json: bool,
+    stdout: TextIO,
+) -> int:
+    report = generate_adapter_report(state_dir=state_dir, limit=limit)
+    bundle = write_adapter_report_bundle(report, output_dir)
+    if open_report:
+        webbrowser.open(bundle.html_path.resolve().as_uri())
+    if as_json:
+        _print_json(bundle.to_dict(), stdout)
+    else:
+        print(f"{report.report_version}: {report.title}", file=stdout)
+        print(f"- overall: {report.setup.overall_status}", file=stdout)
+        print(f"- html: {bundle.html_path}", file=stdout)
+        print(f"- report json: {bundle.report_json_path}", file=stdout)
+        print(f"- redacted share: {bundle.redacted_export_path}", file=stdout)
+        print(f"- observations: {report.summary.total_observations}", file=stdout)
+        print(f"- high-risk: {report.summary.high_risk_observations}", file=stdout)
+        print(f"- warn: {report.summary.warn_observations}", file=stdout)
+        print(f"- pass: {report.summary.pass_observations}", file=stdout)
+        print(f"- returned rows: {report.summary.returned_observations}", file=stdout)
+        print("- observe-only: true", file=stdout)
+        if report.next_steps:
+            print("- next steps:", file=stdout)
+            for step in report.next_steps:
+                print(f"  - {step}", file=stdout)
+    return 1 if report.summary.high_risk_observations > 0 else 0
+
+
 def _run_hermes_status(
     state_dir: str | None,
     as_json: bool,
@@ -1500,6 +1568,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_adapter_observations(
                 state_dir,
                 int(args.limit),
+                bool(args.as_json),
+                sys.stdout,
+            )
+        if adapter_command == "report":
+            state_dir = None if args.state_dir is None else str(args.state_dir)
+            return _run_adapter_report(
+                state_dir,
+                str(args.out),
+                int(args.limit),
+                bool(args.open_report),
                 bool(args.as_json),
                 sys.stdout,
             )
