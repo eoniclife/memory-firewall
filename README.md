@@ -174,6 +174,18 @@ result = observe_then_write_memory(
 print(result.to_dict()["observation"]["level"])
 ```
 
+For a copyable end-to-end example using a caller-owned SQLite writer:
+
+```bash
+python examples/generic_write_through_sqlite.py --workspace ./mf-sqlite-demo
+```
+
+The example writes three native SQLite rows, records redacted Memory Firewall
+observations, and creates `report.json`, `index.html`, and
+`redacted-share.json` under the workspace. It intentionally includes a
+high-risk example, so running the equivalent `memory-firewall adapter report`
+CLI over that state would return exit code `1`.
+
 The bridge writes local private diagnostics under
 `~/.memory-firewall/adapter` by default. Those local JSONL files may contain raw
 candidate memory text. The command output and report rows are redacted summaries
