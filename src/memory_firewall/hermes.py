@@ -33,8 +33,8 @@ from .models import (
 from .scan import ScanEventLevel, ScanEventResult, scan_event
 from .version import __version__
 
-HERMES_INTEGRATION_VERSION = "mf-16"
-HERMES_REPORT_VERSION = "mf-16"
+HERMES_INTEGRATION_VERSION = "mf-17"
+HERMES_REPORT_VERSION = "mf-17"
 HERMES_EVENTS_FILENAME = "events.jsonl"
 HERMES_OBSERVATIONS_FILENAME = "observations.jsonl"
 HERMES_REPORT_JSON_FILENAME = "report.json"

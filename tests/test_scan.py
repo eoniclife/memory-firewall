@@ -114,6 +114,25 @@ def test_scan_jsonl_review_required_contradiction_is_not_pass() -> None:
     assert exit_code_for_summary(result.summary) == SCAN_EXIT_REVIEW_REQUIRED
 
 
+def test_scan_jsonl_provenance_only_untrusted_candidate_is_warn() -> None:
+    event = _event(
+        index=1,
+        authority=SourceAuthority.UNTRUSTED,
+        content="Harmless agent note says the local adapter is installed.",
+    )
+
+    result = scan_jsonl_events(_jsonl(event), source="events.jsonl")
+
+    assert result.events[0].state_analysis.trusted_state_action == (
+        TrustedStateAction.REQUIRES_REDUCER_REVIEW
+    )
+    assert result.events[0].level.value == "warn"
+    assert result.events[0].highest_disposition.value == "warn"
+    assert result.summary.warn_events == 1
+    assert result.summary.high_risk_events == 0
+    assert exit_code_for_summary(result.summary) == SCAN_EXIT_CLEAN
+
+
 def test_scan_jsonl_invalid_lines_are_structured_without_raw_secret_echo() -> None:
     secret = "p@ssw0rd!"
     bad_line = json.dumps({"password": secret}) + "\n"

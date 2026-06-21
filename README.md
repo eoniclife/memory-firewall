@@ -14,11 +14,10 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository is in MF-16: a first observe-only Hermes hook alpha, Hermes
-user-plugin shim installer, redacted recent-observations readout, and local
-Hermes checkup/report over the existing Memory Firewall scan/detector/report
-surfaces, with the checkup aligned to the `plugins.enabled` list style emitted
-by the Hermes CLI.
+This repository is in MF-17: a first observe-only Hermes hook alpha, Hermes
+user-plugin shim installer, redacted recent-observations readout, local Hermes
+checkup/report, and calibrated signal levels from real Hermes dogfood over the
+existing Memory Firewall scan/detector/report surfaces.
 
 Implemented now:
 
@@ -47,6 +46,8 @@ Implemented now:
 - local Hermes diagnostics JSONL, `memory-firewall hermes status`, and
   redacted `memory-firewall hermes observations`;
 - local redacted `memory-firewall hermes report`;
+- provenance-only memory writes surfaced as WARN/review signals, while
+  instruction-like content, secrets, and contradictions remain HIGH-RISK;
 - adapter capability report model and schema;
 - a built-in fake adapter conformance probe;
 - machine-readable event/finding/detector/state-analysis/scan/review/demo/proxy/report/Hermes
@@ -115,7 +116,7 @@ uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 
 ## Hermes Hook Alpha
 
-The MF-16 Hermes integration is observe-only. Install the package into the same
+The MF-17 Hermes integration is observe-only. Install the package into the same
 Python environment that runs Hermes, install the Hermes user-plugin shim, enable
 the `memory-firewall` plugin in Hermes, then start a fresh Hermes session.
 
@@ -152,7 +153,8 @@ observations for implicit memory-provider writes.
 the local Hermes diagnostics: recorded time, hook/tool, redacted target
 namespace, local row handle, level, disposition, finding count, contradiction
 count, risk categories, and detector names. It does not print raw candidate
-memory text.
+memory text. Provenance-only agent memory writes are WARN signals by default;
+hazardous content patterns and state contradictions remain HIGH-RISK.
 
 `memory-firewall hermes report --out ./hermes-memory-report --open` writes a
 local `report.json`, `index.html`, and redacted `redacted-share.json` over the
@@ -247,6 +249,13 @@ MF-16 adds `memory-firewall hermes report --out <dir> --json|--open`. The
 command writes a local redacted Hermes diagnostics report over existing
 observations. It is not a raw trace export, hosted dashboard, telemetry service,
 provider replacement, or enforcement proof.
+
+MF-17 calibrates signal levels after real Hermes dogfood. A normal untrusted
+agent memory write with only a provenance gap is now a WARN/review signal, not a
+HIGH-RISK alert. Instruction injection, secrets, privacy/scope risks, authority
+changes, anomalous persistence, stale-state hazards, and contradictions still
+surface as HIGH-RISK where the detector/policy or state-analysis path requires
+it.
 
 ## Relationship To Agent Memory Contracts
 

@@ -290,17 +290,23 @@ def _event_level(
     disposition: RecommendedDisposition,
     analysis: StateAnalysisResult,
 ) -> ScanEventLevel:
-    if analysis.trusted_state_action in {
-        TrustedStateAction.BLOCKED_LOW_AUTHORITY_CONTRADICTION,
-        TrustedStateAction.REQUIRES_REDUCER_REVIEW,
-    }:
+    if (
+        analysis.trusted_state_action
+        == TrustedStateAction.BLOCKED_LOW_AUTHORITY_CONTRADICTION
+    ):
+        return ScanEventLevel.HIGH_RISK
+    if analysis.contradictions:
         return ScanEventLevel.HIGH_RISK
     if disposition in {
         RecommendedDisposition.REVIEW,
         RecommendedDisposition.QUARANTINE,
     }:
         return ScanEventLevel.HIGH_RISK
-    if disposition == RecommendedDisposition.WARN:
+    if (
+        disposition == RecommendedDisposition.WARN
+        or analysis.trusted_state_action
+        == TrustedStateAction.REQUIRES_REDUCER_REVIEW
+    ):
         return ScanEventLevel.WARN
     return ScanEventLevel.PASS
 
