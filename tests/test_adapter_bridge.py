@@ -8,6 +8,7 @@ from memory_firewall import (
     ADAPTER_BRIDGE_EVENTS_FILENAME,
     ADAPTER_BRIDGE_OBSERVATIONS_FILENAME,
     ADAPTER_BRIDGE_VERSION,
+    AdapterBridgeWriteThroughResult,
     SourceAuthority,
     SourceType,
     adapter_bridge_observations_schema,
@@ -369,6 +370,67 @@ def test_adapter_bridge_write_through_reraises_writer_errors_by_default(tmp_path
     rows = recent_adapter_observations(state_dir=state_dir)
     assert rows.returned_observations == 1
     assert rows.observations[0].target_namespace == "profile"
+
+
+def test_adapter_bridge_write_through_result_rejects_unsafe_direct_public_fields(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    observed = observe_memory_candidate(
+        content="The user prefers local tools.",
+        target_namespace="profile",
+        source_type=SourceType.USER_MESSAGE,
+        source_authority=SourceAuthority.UNTRUSTED,
+        state_dir=tmp_path / "bridge-state",
+    )
+    valid_result = AdapterBridgeWriteThroughResult(
+        bridge_version=ADAPTER_BRIDGE_VERSION,
+        state_dir=observed.state_dir,
+        observation=observed.observation,
+        writer_label="local-writer",
+        writer_called=True,
+        writer_succeeded=True,
+        writer_error_type=None,
+    )
+    schema = adapter_bridge_write_through_result_schema()
+    validator = Draft202012Validator(schema)
+    valid_payload = valid_result.to_dict()
+
+    assert list(validator.iter_errors(valid_payload)) == []
+    unsafe_label_payload = dict(valid_payload, writer_label="sk-ABCDEFGHIJKLMNOPQRSTUV")
+    assert list(validator.iter_errors(unsafe_label_payload))
+    with pytest.raises(ValueError, match="writer_label"):
+        AdapterBridgeWriteThroughResult(
+            bridge_version=ADAPTER_BRIDGE_VERSION,
+            state_dir=observed.state_dir,
+            observation=observed.observation,
+            writer_label="sk-ABCDEFGHIJKLMNOPQRSTUV",
+            writer_called=True,
+            writer_succeeded=True,
+            writer_error_type=None,
+        )
+
+    failure_payload = AdapterBridgeWriteThroughResult(
+        bridge_version=ADAPTER_BRIDGE_VERSION,
+        state_dir=observed.state_dir,
+        observation=observed.observation,
+        writer_label="local-writer",
+        writer_called=True,
+        writer_succeeded=False,
+        writer_error_type="writer-error",
+    ).to_dict()
+    unsafe_error_payload = dict(
+        failure_payload,
+        writer_error_type="native writer failed sk-ABCDEFGHIJKLMNOPQRSTUV",
+    )
+    assert list(validator.iter_errors(unsafe_error_payload))
+    with pytest.raises(ValueError, match="writer_error_type"):
+        AdapterBridgeWriteThroughResult(
+            bridge_version=ADAPTER_BRIDGE_VERSION,
+            state_dir=observed.state_dir,
+            observation=observed.observation,
+            writer_label="local-writer",
+            writer_called=True,
+            writer_succeeded=False,
+            writer_error_type="native writer failed sk-ABCDEFGHIJKLMNOPQRSTUV",
+        )
 
 
 def test_adapter_bridge_report_handles_corrupt_jsonl_without_raw_echo(tmp_path) -> None:  # type: ignore[no-untyped-def]

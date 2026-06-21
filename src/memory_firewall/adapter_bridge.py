@@ -156,13 +156,17 @@ def _safe_target_namespace(value: object) -> str:
 
 
 def _safe_public_label(value: object, *, default: str) -> str:
-    if (
-        isinstance(value, str)
-        and _PUBLIC_LABEL_RE.fullmatch(value)
-        and not _SECRETISH_TOKEN_RE.search(value)
-    ):
-        return value
+    if _is_safe_public_label(value):
+        return cast(str, value)
     return default
+
+
+def _is_safe_public_label(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and _PUBLIC_LABEL_RE.fullmatch(value) is not None
+        and _SECRETISH_TOKEN_RE.search(value) is None
+    )
 
 
 def _safe_bridge_version(value: object) -> str:
@@ -472,8 +476,8 @@ class AdapterBridgeWriteThroughResult:
             raise ValueError("state_dir must not be empty")
         if not isinstance(self.observation, AdapterBridgeObservationSummary):
             raise TypeError("observation must be AdapterBridgeObservationSummary")
-        if not self.writer_label:
-            raise ValueError("writer_label must not be empty")
+        if not _is_safe_public_label(self.writer_label):
+            raise ValueError("writer_label must be a safe public label")
         for field_name in (
             "writer_called",
             "writer_succeeded",
@@ -490,6 +494,10 @@ class AdapterBridgeWriteThroughResult:
             not isinstance(self.writer_error_type, str) or not self.writer_error_type
         ):
             raise ValueError("writer_error_type must be a non-empty string or null")
+        if self.writer_error_type is not None and not _is_safe_public_label(
+            self.writer_error_type
+        ):
+            raise ValueError("writer_error_type must be a safe public label or null")
         if self.writer_called is False and self.writer_error_type is not None:
             raise ValueError("writer_error_type must be null when writer_called is false")
         if (

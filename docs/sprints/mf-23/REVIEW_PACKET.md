@@ -75,6 +75,40 @@ Check especially:
   writer return leakage in the result payload.
 - Public diff leak scan for local/private coordinator paths and ChatGPT URLs
   passed.
+
+## Fix-Pass Notes
+
+Initial independent exact-head review on
+`2685ef1b78d280745acd86460bfaef0e5b03073a` requested changes because direct
+construction of `AdapterBridgeWriteThroughResult` and direct validation against
+`adapter-write-through-result` accepted unsafe `writer_label` and
+`writer_error_type` strings even though the helper redacted them.
+
+The fix-pass makes those public fields use the same safe-label boundary as the
+helper path:
+
+- `AdapterBridgeWriteThroughResult` rejects unsafe direct `writer_label` values;
+- `AdapterBridgeWriteThroughResult` rejects unsafe direct `writer_error_type`
+  values;
+- `adapter_bridge_write_through_result_schema()` uses a public-label schema for
+  both fields, including token/secret/password/API-key/bearer-shaped rejects;
+- regression tests cover direct dataclass construction and direct schema
+  validation for unsafe public strings.
+
+Fix-pass gates repeated:
+
+- focused adapter/CLI/schema tests;
+- full test suite;
+- compileall;
+- mypy on Python 3.10, 3.11, and 3.12;
+- `git diff --check`;
+- doctor/schema/claims JSON smokes;
+- editable-tree helper smoke;
+- build and twine check;
+- installed-wheel helper/schema smoke.
+
+Pending after fix-pass:
+
 - independent exact-head review;
 - PR CI green on the exact head SHA;
 - main CI green after merge.

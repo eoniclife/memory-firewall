@@ -47,10 +47,32 @@ from .taxonomy import risk_taxonomy
 from .version import __version__
 
 SCHEMA_VERSION = "mf-23"
+_PUBLIC_LABEL_PATTERN = r"^[A-Za-z][A-Za-z0-9._:-]{0,63}$"
+_SECRETISH_PUBLIC_LABEL_PATTERNS = (
+    r"^[Ss][Kk]-[A-Za-z0-9_-]{8,}",
+    r"^[Gg][Hh][Pp]_[A-Za-z0-9_]{12,}",
+    r"^[Xx][Oo][Xx][BbAaPpRrSs]-[A-Za-z0-9-]{8,}",
+    r"[Tt][Oo][Kk][Ee][Nn]",
+    r"[Ss][Ee][Cc][Rr][Ee][Tt]",
+    r"[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]",
+    r"[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]",
+    r"[Bb][Ee][Aa][Rr][Ee][Rr]",
+)
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
     return [item.value for item in enum_type]
+
+
+def _public_label_schema() -> dict[str, Any]:
+    return {
+        "type": "string",
+        "pattern": _PUBLIC_LABEL_PATTERN,
+        "allOf": [
+            {"not": {"pattern": pattern}}
+            for pattern in _SECRETISH_PUBLIC_LABEL_PATTERNS
+        ],
+    }
 
 
 def _metadata_schema() -> dict[str, Any]:
@@ -1859,12 +1881,12 @@ def adapter_bridge_write_through_result_schema() -> dict[str, Any]:
             "bridge_version": {"const": ADAPTER_BRIDGE_VERSION},
             "state_dir": {"type": "string", "minLength": 1},
             "observation": _adapter_bridge_observation_summary_schema(),
-            "writer_label": {"type": "string", "minLength": 1},
+            "writer_label": _public_label_schema(),
             "writer_called": {"type": "boolean"},
             "writer_succeeded": {"type": "boolean"},
             "writer_error_type": {
                 "anyOf": [
-                    {"type": "string", "minLength": 1},
+                    _public_label_schema(),
                     {"type": "null"},
                 ],
             },
@@ -1892,7 +1914,7 @@ def adapter_bridge_write_through_result_schema() -> dict[str, Any]:
                 },
                 "then": {
                     "properties": {
-                        "writer_error_type": {"type": "string", "minLength": 1}
+                        "writer_error_type": _public_label_schema()
                     }
                 },
             },
