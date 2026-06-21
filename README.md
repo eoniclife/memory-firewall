@@ -14,13 +14,11 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository's runtime/schema surface is MF-23: a generic Python
-write-through helper for caller-owned memory writes, plus a local generic
-adapter report over one supplied-candidate diagnostics stream, the first
-observe-only Hermes hook alpha, Hermes user-plugin shim installer, redacted
-recent-observations readout, local Hermes checkup/report, calibrated signal
-levels from real Hermes dogfood, and version-aware diagnostics over the existing
-Memory Firewall scan/detector/report surfaces.
+This repository's current public package surface is MF-25. The runtime/schema
+surface last expanded at MF-23 with a generic Python write-through helper for
+caller-owned memory writes; MF-24/MF-25 add clean-install dogfood evidence and a
+copyable SQLite runbook without claiming a new framework adapter or enforcement
+surface.
 
 Implemented now:
 
@@ -82,6 +80,46 @@ Not implemented yet:
   generic one-candidate local bridge;
 - enforce mode outside the built-in reference substrate.
 
+## Quickstart
+
+Memory Firewall currently installs from GitHub. It supports Python 3.10, 3.11,
+and 3.12. On a Mac, the least surprising first run is with `uv`:
+
+```bash
+uv tool run --python 3.12 \
+  --from "git+https://github.com/eoniclife/memory-firewall.git" \
+  memory-firewall doctor --json
+
+uv tool run --python 3.12 \
+  --from "git+https://github.com/eoniclife/memory-firewall.git" \
+  memory-firewall demo poison --json
+
+uv tool run --python 3.12 \
+  --from "git+https://github.com/eoniclife/memory-firewall.git" \
+  memory-firewall report demo --out ./memory-integrity-report --open
+```
+
+The poisoning demo is intentionally small: a toy memory store first remembers a
+valid signed project codename, then accepts a forged lower-authority memory. The
+demo shows the naive answer, the source-of-record answer, and the Memory
+Firewall finding that keeps the forged write out of the trusted preview unless
+an operator creates an explicit local override receipt.
+
+If you have a checkout and want the copyable SQLite example:
+
+```bash
+uv venv --python 3.12 .venv
+uv pip install --python .venv/bin/python -e .
+.venv/bin/python examples/generic_write_through_sqlite.py --workspace ./mf-sqlite-demo
+open ./mf-sqlite-demo/report/index.html
+```
+
+The SQLite example preserves the caller-owned native writes, records local
+private diagnostics, and writes `report.json`, `index.html`, and
+`redacted-share.json`. It intentionally includes one high-risk row, so report
+commands over that state may return exit code `1`; that means "attention
+needed", not "the command crashed."
+
 ## Install For Development
 
 ```bash
@@ -140,7 +178,7 @@ uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 
 ## Generic Adapter Bridge
 
-Use the MF-23 bridge, report, and write-through helper when an agent or script
+Use the generic bridge, report, and write-through helper when an agent or script
 has one memory candidate and wants Memory Firewall diagnostics without building
 full `MemoryEvent` JSON by hand.
 
@@ -423,6 +461,17 @@ writer return value, and returns redacted writer status plus the redacted
 observation summary. It is install ergonomics for custom agents, not a
 framework adapter, provider wrapper, write suppressor, approval gate, or trusted
 ledger.
+
+MF-24 proved the generic write-through helper from a clean installed wheel in a
+private dogfood run. It wrapped a caller-owned SQLite writer, preserved native
+writes, produced pass/warn/high-risk observations, generated a local adapter
+report, and verified that `redacted-share.json` did not leak raw candidate text,
+raw event ids, local coordinator paths, or writer return values.
+
+MF-25 adds `examples/generic_write_through_sqlite.py`, a copyable public
+SQLite runbook that demonstrates the same generic write-through path without
+claiming Mem0, Honcho, GBrain, LangChain, Letta, Zep, vector-store, hosted,
+telemetry, trusted-ledger, or production enforcement support.
 
 ## Relationship To Agent Memory Contracts
 

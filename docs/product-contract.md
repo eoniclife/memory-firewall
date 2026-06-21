@@ -1,14 +1,13 @@
 # Memory Firewall Product Contract
 
-MF-23 adds a generic Python write-through helper for caller-owned memory writes,
-plus a local redacted generic adapter report over one supplied-candidate
-diagnostics stream, the explicit current-version-only Hermes diagnostics lens
-over the first observe-only Hermes hook alpha, Hermes user-plugin shim
-installer, redacted Hermes observations readout, local Hermes checkup/report,
-calibrated signal levels from real Hermes dogfood, version-aware diagnostics,
-and existing scan, detector, review, proxy, and report surfaces while keeping
-broad real memory-store scanning, provider replacement, trusted ledger writes,
-hosted dashboards, and production enforcement claims out of scope.
+MF-25 is the current public package surface. MF-23 added a generic Python
+write-through helper for caller-owned memory writes plus a local redacted
+generic adapter report over one supplied-candidate diagnostics stream. MF-24
+proved that path from a clean installed wheel. MF-25 adds a copyable SQLite
+runbook/example for the same generic bridge. The existing scan, detector,
+review, proxy, Hermes observe-only, generic adapter, and report surfaces remain
+bounded: no broad real memory-store scanning, provider replacement, trusted
+ledger writes, hosted dashboards, or production enforcement claims.
 
 ## Category Line
 
@@ -40,7 +39,7 @@ private orchestration layer
     this public repository
 ```
 
-## MF-23 Allows
+## Current Public Surface Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -160,6 +159,10 @@ private orchestration layer
   memory writer after observation;
 - redacted generic write-through helper results that omit raw candidate text,
   raw-derived event ids, writer return values, and unsafe writer labels;
+- clean installed-wheel dogfood of the generic helper around a caller-owned
+  SQLite writer;
+- copyable public SQLite example at `examples/generic_write_through_sqlite.py`
+  that preserves native writes and generates a local redacted adapter report;
 - machine-readable `adapter-observe-result`, `adapter-observations`,
   `adapter-write-through-result`, and `adapter-report` schemas;
 - local configuration of the generic adapter diagnostics directory via
@@ -177,7 +180,7 @@ private orchestration layer
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-23 Does Not Allow
+## Current Public Surface Does Not Allow
 
 - broad real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
