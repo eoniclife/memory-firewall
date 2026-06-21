@@ -26,7 +26,7 @@ provider wiring, or release status.
 
 ## Actual Hermes Dogfood Evidence
 
-After MF-18 merged, actual `/Users/a/.hermes` was installed editable at
+After MF-18 merged, the local Hermes home was installed editable at
 `0.1.0.dev18` and the generated shim was refreshed. A fresh Hermes oneshot used
 the built-in `memory` tool on harmless test text. Memory Firewall recorded a new
 row:

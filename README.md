@@ -164,10 +164,14 @@ memory-firewall hermes report --out ./hermes-memory-report --open
 In `status` and `report`, `current_version_observations` should increase after
 the fresh memory write. In `observations`, the newest row should have
 `recorded_integration_version` equal to the top-level `integration_version`.
-A normal provenance-only memory marker should be a WARN/review row. Older
-HIGH-RISK rows may still keep the command exit code at `1`; that means local
-diagnostics still contain high-risk history, not that the fresh current-version
-marker was blocked or reclassified.
+A normal provenance-only memory marker should be a WARN/review row. If old
+HIGH-RISK rows remain, `hermes status` returns `1` whenever
+`high_risk_observations` is non-zero, and `hermes report` returns `1` when setup
+is not ready or high-risk rows remain. `hermes observations --limit N` returns
+`1` only when the returned newest-first window includes a high-risk row. Check
+`overall_status`, `high_risk_observations`, and the returned rows before
+interpreting exit code `1`; it may reflect historical diagnostics, not a blocked
+or reclassified current-version marker.
 
 By default the plugin records only high-signal memory write tool attempts.
 Diagnostics are local JSONL files under `~/.hermes/memory-firewall/`, unless
