@@ -505,6 +505,11 @@ class MemoryFirewallScanRecord:
             "finding_count",
             _require_non_negative_int(self.finding_count, "finding_count"),
         )
+        if (
+            self.scan_level == MemoryFirewallScanLevel.CANDIDATE_LEVEL
+            and self.candidate_id is None
+        ):
+            raise ValueError("candidate-level scans require candidate_id")
         for field_name in ("candidate_id", "detector_pack_version", "policy_version"):
             value = getattr(self, field_name)
             if value is not None:
@@ -1169,12 +1174,32 @@ def _source_index(
     return {key: tuple(items) for key, items in index.items()}
 
 
+def _candidate_index(
+    records: tuple[ExtractedCandidateRecord, ...],
+) -> dict[tuple[str, str], tuple[ExtractedCandidateRecord, ...]]:
+    index: dict[tuple[str, str], list[ExtractedCandidateRecord]] = {}
+    for record in records:
+        index.setdefault(_candidate_key(record), []).append(record)
+    return {key: tuple(items) for key, items in index.items()}
+
+
 def _scan_index(
     records: tuple[MemoryFirewallScanRecord, ...],
 ) -> dict[tuple[str, str | None], tuple[MemoryFirewallScanRecord, ...]]:
     index: dict[tuple[str, str | None], list[MemoryFirewallScanRecord]] = {}
     for record in records:
         index.setdefault(_scan_key(record), []).append(record)
+    return {key: tuple(items) for key, items in index.items()}
+
+
+def _scan_event_index(
+    records: tuple[MemoryFirewallScanRecord, ...],
+) -> dict[tuple[str, str], tuple[MemoryFirewallScanRecord, ...]]:
+    index: dict[tuple[str, str], list[MemoryFirewallScanRecord]] = {}
+    for record in records:
+        index.setdefault((record.lineage_id, record.memory_firewall_event_id), []).append(
+            record
+        )
     return {key: tuple(items) for key, items in index.items()}
 
 
@@ -1398,7 +1423,7 @@ def _scan_matches_candidate(
 def _case_level_scan_for_candidate(
     candidate: ExtractedCandidateRecord,
     scans: tuple[MemoryFirewallScanRecord, ...],
-) -> MemoryFirewallScanRecord | None:
+) -> tuple[MemoryFirewallScanRecord | None, tuple[LineageIssue, ...]]:
     case_scans = [
         scan
         for scan in scans
@@ -1407,8 +1432,17 @@ def _case_level_scan_for_candidate(
         and (scan.candidate_id is None or scan.candidate_id == candidate.candidate_id)
     ]
     if not case_scans:
-        return None
-    return case_scans[0]
+        return None, ()
+    if len(case_scans) > 1:
+        return None, (
+            LineageIssue(
+                code="ambiguous_case_level_scan",
+                message="multiple case-level scan records apply to candidate",
+                candidate_id=candidate.candidate_id,
+                provider_memory_id=candidate.provider_memory_id,
+            ),
+        )
+    return case_scans[0], ()
 
 
 def _candidate_scan_evidence(
@@ -1433,6 +1467,8 @@ def _candidate_scan_evidence(
     matching_scans = [
         scan for scan in candidate_scans if _scan_matches_candidate(candidate, scan)
     ]
+    case_scan, case_scan_issues = _case_level_scan_for_candidate(candidate, scans)
+    issues.extend(case_scan_issues)
     if len(candidate_scans) > 1:
         issues.append(
             LineageIssue(
@@ -1476,7 +1512,11 @@ def _candidate_scan_evidence(
                 )
             )
         if (
-            candidate.memory_firewall_finding_count
+            (
+                candidate.memory_firewall_event_id is not None
+                or candidate.memory_firewall_disposition is not None
+                or candidate.memory_firewall_finding_count > 0
+            )
             and candidate.memory_firewall_finding_count != scan.finding_count
         ):
             issues.append(
@@ -1490,7 +1530,7 @@ def _candidate_scan_evidence(
         return (
             CandidateScanStatus.CANDIDATE_LEVEL,
             scan,
-            _case_level_scan_for_candidate(candidate, scans),
+            case_scan,
             tuple(limitations),
             tuple(issues),
         )
@@ -1507,7 +1547,6 @@ def _candidate_scan_evidence(
                 provider_memory_id=candidate.provider_memory_id,
             )
         )
-    case_scan = _case_level_scan_for_candidate(candidate, scans)
     if case_scan is not None:
         limitations.append("Memory Firewall verdict is case-level, not candidate-level")
         return (
@@ -1549,6 +1588,39 @@ def _build_issues(
     extra_issues: tuple[LineageIssue, ...],
 ) -> tuple[LineageIssue, ...]:
     issues: list[LineageIssue] = list(extra_issues)
+    persisted_to_candidates: dict[tuple[str, str], list[str]] = {}
+    retrieved_to_candidates: dict[tuple[str, str], list[str]] = {}
+    for verdict in verdicts:
+        if verdict.persisted and verdict.persisted_record_id is not None:
+            persisted_to_candidates.setdefault(
+                (verdict.lineage_id, verdict.persisted_record_id),
+                [],
+            ).append(verdict.candidate_id)
+        if verdict.retrieved and verdict.retrieval_event_id is not None:
+            retrieved_to_candidates.setdefault(
+                (verdict.lineage_id, verdict.retrieval_event_id),
+                [],
+            ).append(verdict.candidate_id)
+    for (_lineage_id, persisted_record_id), candidate_ids in persisted_to_candidates.items():
+        if len(set(candidate_ids)) > 1:
+            issues.append(
+                LineageIssue(
+                    code="multiple_candidates_same_persisted_record",
+                    message="multiple candidates link to the same persisted provider record",
+                    candidate_id=",".join(sorted(set(candidate_ids))),
+                    persisted_record_id=persisted_record_id,
+                )
+            )
+    for (_lineage_id, retrieval_event_id), candidate_ids in retrieved_to_candidates.items():
+        if len(set(candidate_ids)) > 1:
+            issues.append(
+                LineageIssue(
+                    code="multiple_candidates_same_retrieval_record",
+                    message="multiple candidates link to the same retrieved provider record",
+                    candidate_id=",".join(sorted(set(candidate_ids))),
+                    retrieval_event_id=retrieval_event_id,
+                )
+            )
     for verdict in verdicts:
         if verdict.source_digest is None:
             issues.append(
@@ -1661,10 +1733,13 @@ def _build_issues(
 
 def _duplicate_index_issues(
     sources_by_key: Mapping[tuple[str, str], tuple[ObservedSourceRecord, ...]],
+    candidates_by_key: Mapping[tuple[str, str], tuple[ExtractedCandidateRecord, ...]],
+    scans_by_event: Mapping[tuple[str, str], tuple[MemoryFirewallScanRecord, ...]],
     persisted_by_provider: Mapping[tuple[str, str], tuple[PersistedMemoryRecord, ...]],
     persisted_by_record_id: Mapping[tuple[str, str], tuple[PersistedMemoryRecord, ...]],
     persisted_by_digest: Mapping[tuple[str, str], tuple[PersistedMemoryRecord, ...]],
     retrieved_by_provider: Mapping[tuple[str, str], tuple[RetrievedMemoryRecord, ...]],
+    retrieved_by_event_id: Mapping[tuple[str, str], tuple[RetrievedMemoryRecord, ...]],
     retrieved_by_persisted_id: Mapping[tuple[str, str], tuple[RetrievedMemoryRecord, ...]],
     retrieved_by_digest: Mapping[tuple[str, str], tuple[RetrievedMemoryRecord, ...]],
 ) -> tuple[LineageIssue, ...]:
@@ -1678,6 +1753,39 @@ def _duplicate_index_issues(
                     candidate_id=f"{lineage_id}:{source_event_id}",
                 )
             )
+    for (_lineage_id, candidate_id), candidate_records in candidates_by_key.items():
+        if len(candidate_records) > 1:
+            issues.append(
+                LineageIssue(
+                    code="duplicate_candidate_id",
+                    message="multiple candidates share lineage and candidate id",
+                    candidate_id=candidate_id,
+                )
+            )
+    for (_lineage_id, event_id), scan_records in scans_by_event.items():
+        if len(scan_records) > 1:
+            issues.append(
+                LineageIssue(
+                    code="duplicate_scan_event_id",
+                    message="multiple Memory Firewall scan records share event id",
+                    candidate_id=event_id,
+                )
+            )
+    for scan_records in scans_by_event.values():
+        for scan_record in scan_records:
+            if (
+                scan_record.scan_level == MemoryFirewallScanLevel.CANDIDATE_LEVEL
+                and scan_record.candidate_id is not None
+                and (scan_record.lineage_id, scan_record.candidate_id)
+                not in candidates_by_key
+            ):
+                issues.append(
+                    LineageIssue(
+                        code="orphan_candidate_scan",
+                        message="candidate-level scan targets no candidate in this packet",
+                        candidate_id=scan_record.candidate_id,
+                    )
+                )
     for (_lineage_id, provider_memory_id), persisted_provider_records in (
         persisted_by_provider.items()
     ):
@@ -1719,6 +1827,17 @@ def _duplicate_index_issues(
                     provider_memory_id=provider_memory_id,
                 )
             )
+    for (_lineage_id, retrieval_event_id), retrieved_event_records in (
+        retrieved_by_event_id.items()
+    ):
+        if len(retrieved_event_records) > 1:
+            issues.append(
+                LineageIssue(
+                    code="duplicate_retrieval_event_id",
+                    message="multiple retrieved records share retrieval event id",
+                    retrieval_event_id=retrieval_event_id,
+                )
+            )
     for (_lineage_id, persisted_record_id), retrieved_persisted_records in (
         retrieved_by_persisted_id.items()
     ):
@@ -1758,7 +1877,9 @@ def generate_lineage_report(value: Mapping[str, Any]) -> LineageReport:
     )
     sources, candidates, scans, persisted, retrieved = _records_from_payload(value)
     sources_by_key = _source_index(sources)
+    candidates_by_key = _candidate_index(candidates)
     scans_by_candidate = _scan_index(scans)
+    scans_by_event = _scan_event_index(scans)
     persisted_by_provider = _index_many_persisted(
         persisted,
         tuple(_record_key(item) for item in persisted),
@@ -1775,6 +1896,10 @@ def generate_lineage_report(value: Mapping[str, Any]) -> LineageReport:
         retrieved,
         tuple(_record_key(item) for item in retrieved),
     )
+    retrieved_by_event_id = _index_many_retrieved(
+        retrieved,
+        tuple(_retrieval_record_key(item) for item in retrieved),
+    )
     retrieved_by_persisted_id = _index_many_retrieved(
         retrieved,
         tuple(_retrieved_persisted_key(item) for item in retrieved),
@@ -1786,10 +1911,13 @@ def generate_lineage_report(value: Mapping[str, Any]) -> LineageReport:
     extra_issues = list(
         _duplicate_index_issues(
             sources_by_key,
+            candidates_by_key,
+            scans_by_event,
             persisted_by_provider,
             persisted_by_record_id,
             persisted_by_digest,
             retrieved_by_provider,
+            retrieved_by_event_id,
             retrieved_by_persisted_id,
             retrieved_by_digest,
         )
@@ -1803,6 +1931,27 @@ def generate_lineage_report(value: Mapping[str, Any]) -> LineageReport:
             (),
         )
         source = source_matches[0] if len(source_matches) == 1 else None
+        if source is not None and source.scope != candidate.scope:
+            extra_issues.append(
+                LineageIssue(
+                    code="source_scope_mismatch",
+                    message="candidate source scope differs from candidate scope",
+                    candidate_id=candidate.candidate_id,
+                    provider_memory_id=candidate.provider_memory_id,
+                )
+            )
+        if source is not None and (
+            source.declared_authority != candidate.declared_authority
+            or source.verified_authority_status != candidate.verified_authority_status
+        ):
+            extra_issues.append(
+                LineageIssue(
+                    code="candidate_authority_differs_from_source",
+                    message="candidate authority differs from source authority without promotion evidence",
+                    candidate_id=candidate.candidate_id,
+                    provider_memory_id=candidate.provider_memory_id,
+                )
+            )
         persisted_stage = _match_persisted(
             candidate,
             persisted_by_provider,
@@ -1821,6 +1970,29 @@ def generate_lineage_report(value: Mapping[str, Any]) -> LineageReport:
             matched_persisted.add(_persisted_record_key(persisted_match))
         if retrieved_match is not None and _link_succeeded(retrieved_stage.status):
             matched_retrieved.add(_retrieval_record_key(retrieved_match))
+        raw_downstream_used = (
+            False if retrieved_match is None else retrieved_match.downstream_used
+        )
+        downstream_used = _link_succeeded(retrieved_stage.status) and raw_downstream_used
+        if raw_downstream_used and not _link_succeeded(retrieved_stage.status):
+            extra_issues.append(
+                LineageIssue(
+                    code="unlinked_retrieval_marked_downstream_used",
+                    message="retrieval record claimed downstream use but was not cleanly linked",
+                    candidate_id=candidate.candidate_id,
+                    provider_memory_id=candidate.provider_memory_id,
+                    persisted_record_id=(
+                        None
+                        if persisted_match is None
+                        else persisted_match.persisted_record_id
+                    ),
+                    retrieval_event_id=(
+                        None
+                        if retrieved_match is None
+                        else retrieved_match.retrieval_event_id
+                    ),
+                )
+            )
         scan_status, candidate_scan, case_scan, scan_limitations, scan_issues = (
             _candidate_scan_evidence(
                 candidate,
@@ -1855,7 +2027,7 @@ def generate_lineage_report(value: Mapping[str, Any]) -> LineageReport:
                 retrieval_link_status=retrieved_stage.status,
                 persisted=_link_succeeded(persisted_stage.status),
                 retrieved=_link_succeeded(retrieved_stage.status),
-                downstream_used=False if retrieved_match is None else retrieved_match.downstream_used,
+                downstream_used=downstream_used,
                 scan_status=scan_status,
                 memory_firewall_event_id=(
                     None if candidate_scan is None else candidate_scan.memory_firewall_event_id

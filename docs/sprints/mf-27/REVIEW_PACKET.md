@@ -64,6 +64,10 @@ Check especially:
   caught;
 - whether duplicate IDs/digests and reused local IDs across lineages avoid
   arbitrary last-record-wins behavior;
+- whether source scope mismatches, duplicate candidate ids, duplicate scan or
+  retrieval event ids, orphan scans, and multiple candidates linked to the same
+  provider record fail closed;
+- whether downstream-use counts only include successfully linked retrievals;
 - whether CLI/schema/docs avoid implying live provider support, write
   suppression, enforcement, or verified provenance.
 

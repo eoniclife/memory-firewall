@@ -536,3 +536,166 @@ def test_lineage_report_scopes_reused_local_ids_by_lineage() -> None:
 
     assert payload["issues"] == []
     assert payload["summary"]["retrieved_candidates"] == 2
+
+
+def test_lineage_report_flags_source_candidate_scope_mismatch() -> None:
+    packet = _base_packet()
+    content = "User prefers review before release."
+    packet["source_events"] = [
+        {
+            **_source(),
+            "scope": "tenant:source",
+        }
+    ]
+    packet["extracted_candidates"] = [
+        _candidate("candidate", content, "mem-target", "quarantine"),
+    ]
+    packet["memory_firewall_scans"] = [_scan("candidate", content, "quarantine")]
+    packet["persisted_memories"] = [_persisted("q-target", content, "mem-target")]
+    packet["retrieved_memories"] = [
+        _retrieved("ret-target", content, "mem-target", "q-target", downstream_used=True)
+    ]
+
+    payload = generate_lineage_report(packet).to_dict()
+
+    assert "source_scope_mismatch" in {issue["code"] for issue in payload["issues"]}
+
+
+def test_lineage_report_flags_duplicate_candidate_id_and_many_to_one_records() -> None:
+    packet = _base_packet()
+    content = "User prefers review before release."
+    packet["extracted_candidates"] = [
+        _candidate("candidate", content, "mem-target", "quarantine"),
+        _candidate("candidate", content, "mem-target", "quarantine"),
+    ]
+    packet["memory_firewall_scans"] = [
+        _scan("candidate", content, "quarantine"),
+    ]
+    packet["persisted_memories"] = [_persisted("q-target", content, "mem-target")]
+    packet["retrieved_memories"] = [
+        _retrieved("ret-target", content, "mem-target", "q-target", downstream_used=True)
+    ]
+
+    payload = generate_lineage_report(packet).to_dict()
+    issue_codes = {issue["code"] for issue in payload["issues"]}
+
+    assert "duplicate_candidate_id" in issue_codes
+    assert payload["summary"]["retrieved_candidates"] == 2
+
+
+def test_lineage_report_flags_two_candidates_linking_same_records() -> None:
+    packet = _base_packet()
+    content = "User prefers review before release."
+    packet["extracted_candidates"] = [
+        _candidate("candidate-a", content, None, "quarantine"),
+        _candidate("candidate-b", content, None, "quarantine"),
+    ]
+    packet["memory_firewall_scans"] = [
+        _scan("candidate-a", content, "quarantine"),
+        _scan("candidate-b", content, "quarantine"),
+    ]
+    packet["persisted_memories"] = [_persisted("q-target", content, None)]
+    packet["retrieved_memories"] = [
+        _retrieved("ret-target", content, None, "q-target", downstream_used=True)
+    ]
+
+    payload = generate_lineage_report(packet).to_dict()
+    issue_codes = {issue["code"] for issue in payload["issues"]}
+
+    assert "multiple_candidates_same_persisted_record" in issue_codes
+    assert "multiple_candidates_same_retrieval_record" in issue_codes
+
+
+def test_lineage_report_flags_duplicate_scan_and_retrieval_event_ids() -> None:
+    packet = _base_packet()
+    content_a = "User prefers review before release."
+    content_b = "User prefers tests before release."
+    packet["extracted_candidates"] = [
+        _candidate("candidate-a", content_a, "mem-a", "quarantine"),
+        _candidate("candidate-b", content_b, "mem-b", "quarantine"),
+    ]
+    packet["memory_firewall_scans"] = [
+        _scan("candidate-a", content_a, "quarantine", event_id="mfev_v1_shared"),
+        _scan("candidate-b", content_b, "quarantine", event_id="mfev_v1_shared"),
+    ]
+    packet["persisted_memories"] = [
+        _persisted("q-a", content_a, "mem-a"),
+        _persisted("q-b", content_b, "mem-b"),
+    ]
+    packet["retrieved_memories"] = [
+        _retrieved("ret-shared", content_a, "mem-a", "q-a", downstream_used=True),
+        _retrieved("ret-shared", content_b, "mem-b", "q-b", downstream_used=True),
+    ]
+
+    payload = generate_lineage_report(packet).to_dict()
+    issue_codes = {issue["code"] for issue in payload["issues"]}
+
+    assert "duplicate_scan_event_id" in issue_codes
+    assert "duplicate_retrieval_event_id" in issue_codes
+
+
+def test_lineage_report_does_not_attribute_downstream_use_from_failed_retrieval_link() -> None:
+    packet = _base_packet()
+    candidate_content = "User prefers tests before release."
+    retrieved_content = "User prefers skipping tests before release."
+    packet["extracted_candidates"] = [
+        _candidate("candidate", candidate_content, "mem-target", "quarantine"),
+    ]
+    packet["memory_firewall_scans"] = [
+        _scan("candidate", candidate_content, "quarantine"),
+    ]
+    packet["persisted_memories"] = [
+        _persisted("q-target", candidate_content, "mem-target"),
+    ]
+    packet["retrieved_memories"] = [
+        _retrieved(
+            "ret-target",
+            retrieved_content,
+            "mem-target",
+            "q-target",
+            downstream_used=True,
+        ),
+    ]
+
+    payload = generate_lineage_report(packet).to_dict()
+    verdict = payload["candidate_verdicts"][0]
+    issue_codes = {issue["code"] for issue in payload["issues"]}
+
+    assert verdict["retrieval_link_status"] == "content_mismatch"
+    assert verdict["retrieved"] is False
+    assert verdict["downstream_used"] is False
+    assert payload["summary"]["downstream_used_candidates"] == 0
+    assert "unlinked_retrieval_marked_downstream_used" in issue_codes
+
+
+def test_lineage_report_rejects_candidate_level_scan_without_candidate_id() -> None:
+    packet = _base_packet()
+    content = "User prefers review before release."
+    packet["extracted_candidates"] = [
+        _candidate("candidate", content, "mem-target", None),
+    ]
+    packet["memory_firewall_scans"] = [
+        _scan(None, content, "quarantine", scan_level="candidate_level"),
+    ]
+
+    with pytest.raises(ValueError, match="candidate-level scans require candidate_id"):
+        generate_lineage_report(packet)
+
+
+def test_lineage_report_flags_orphan_candidate_scan_and_ambiguous_case_scan() -> None:
+    packet = _base_packet()
+    content = "User prefers review before release."
+    packet["extracted_candidates"] = [
+        _candidate("candidate", content, "mem-target", None),
+    ]
+    packet["memory_firewall_scans"] = [
+        _scan("missing", content, "quarantine"),
+        _scan(None, content, "warn", scan_level="case_level_only", event_id="mfev_v1_case_a"),
+        _scan(None, content, "review", scan_level="case_level_only", event_id="mfev_v1_case_b"),
+    ]
+
+    payload = generate_lineage_report(packet).to_dict()
+    issue_codes = {issue["code"] for issue in payload["issues"]}
+
+    assert "orphan_candidate_scan" in issue_codes
+    assert "ambiguous_case_level_scan" in issue_codes
