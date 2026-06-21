@@ -9,7 +9,11 @@ from .analysis import ANALYSIS_VERSION, TrustedStateAction
 from .claim_budget import claim_budget
 from .detectors import DETECTOR_PACK_NAME, DETECTOR_PACK_VERSION, default_detector_pack
 from .demo import POISON_DEMO_VERSION
-from .hermes import HERMES_DEFAULT_MODE, HERMES_INTEGRATION_VERSION
+from .hermes import (
+    HERMES_DEFAULT_MODE,
+    HERMES_INTEGRATION_VERSION,
+    HERMES_REPORT_VERSION,
+)
 from .models import (
     EvidenceField,
     MAX_METADATA_ENTRIES,
@@ -39,7 +43,7 @@ from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-15"
+SCHEMA_VERSION = "mf-16"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -1512,7 +1516,7 @@ def hermes_status_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-status.mf-15.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-status.mf-16.json",
         "title": "HermesStatus",
         "type": "object",
         "additionalProperties": False,
@@ -1628,7 +1632,7 @@ def hermes_observations_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-observations.mf-15.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-observations.mf-16.json",
         "title": "HermesObservations",
         "type": "object",
         "additionalProperties": False,
@@ -1689,7 +1693,7 @@ def hermes_checkup_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-checkup.mf-15.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-checkup.mf-16.json",
         "title": "HermesCheckup",
         "type": "object",
         "additionalProperties": False,
@@ -1764,6 +1768,140 @@ def hermes_checkup_schema() -> dict[str, Any]:
     }
 
 
+def _hermes_report_setup_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "overall_status",
+            "plugin_shim_installed",
+            "manifest_matches",
+            "init_matches",
+            "config_mentions_plugin",
+            "state_dir_mode",
+            "events_file_mode",
+            "observations_file_mode",
+            "sample_written",
+        ],
+        "properties": {
+            "overall_status": {
+                "type": "string",
+                "enum": ["ready", "needs_setup", "attention"],
+            },
+            "plugin_shim_installed": {"type": "boolean"},
+            "manifest_matches": {"type": "boolean"},
+            "init_matches": {"type": "boolean"},
+            "config_mentions_plugin": {"type": "boolean"},
+            "state_dir_mode": _nullable_octal_mode_schema(),
+            "events_file_mode": _nullable_octal_mode_schema(),
+            "observations_file_mode": _nullable_octal_mode_schema(),
+            "sample_written": {"type": "boolean"},
+        },
+    }
+
+
+def _hermes_report_summary_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "total_observations",
+            "pass_observations",
+            "warn_observations",
+            "high_risk_observations",
+            "blocked_by_firewall",
+            "returned_observations",
+            "report_contains_raw_content",
+            "hosted_dashboard",
+            "production_enforcement",
+        ],
+        "properties": {
+            "total_observations": {"type": "integer", "minimum": 0},
+            "pass_observations": {"type": "integer", "minimum": 0},
+            "warn_observations": {"type": "integer", "minimum": 0},
+            "high_risk_observations": {"type": "integer", "minimum": 0},
+            "blocked_by_firewall": {"type": "integer", "minimum": 0},
+            "returned_observations": {"type": "integer", "minimum": 0},
+            "report_contains_raw_content": {"const": False},
+            "hosted_dashboard": {"const": False},
+            "production_enforcement": {"const": False},
+        },
+    }
+
+
+def _string_int_count_map_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "propertyNames": {"type": "string", "minLength": 1},
+        "additionalProperties": {"type": "integer", "minimum": 0},
+    }
+
+
+def hermes_report_schema() -> dict[str, Any]:
+    """Return the Hermes local diagnostics report JSON schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/hermes-report.mf-16.json",
+        "title": "HermesReport",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "report_version",
+            "integration_version",
+            "package_version",
+            "title",
+            "generated_at",
+            "hermes_home",
+            "state_dir",
+            "setup",
+            "summary",
+            "status",
+            "observations",
+            "level_counts",
+            "risk_category_counts",
+            "detector_counts",
+            "next_steps",
+            "limitations",
+            "observe_only",
+            "production_enforcement",
+            "raw_content_included",
+        ],
+        "properties": {
+            "report_version": {"const": HERMES_REPORT_VERSION},
+            "integration_version": {"const": HERMES_INTEGRATION_VERSION},
+            "package_version": {"type": "string", "minLength": 1},
+            "title": {"type": "string", "minLength": 1},
+            "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": RFC3339_TIMESTAMP_PATTERN,
+            },
+            "hermes_home": {"type": "string", "minLength": 1},
+            "state_dir": {"type": "string", "minLength": 1},
+            "setup": _hermes_report_setup_schema(),
+            "summary": _hermes_report_summary_schema(),
+            "status": hermes_status_schema(),
+            "observations": hermes_observations_schema(),
+            "level_counts": _string_int_count_map_schema(),
+            "risk_category_counts": _string_int_count_map_schema(),
+            "detector_counts": _string_int_count_map_schema(),
+            "next_steps": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+            },
+            "limitations": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
+            },
+            "observe_only": {"const": True},
+            "production_enforcement": {"const": False},
+            "raw_content_included": {"const": False},
+        },
+    }
+
+
 def schema_bundle() -> dict[str, Any]:
     """Return the complete public contract bundle."""
 
@@ -1789,6 +1927,7 @@ def schema_bundle() -> dict[str, Any]:
         "report_result_schema": report_result_schema(),
         "redacted_report_export_schema": redacted_report_export_schema(),
         "hermes_checkup_schema": hermes_checkup_schema(),
+        "hermes_report_schema": hermes_report_schema(),
         "hermes_status_schema": hermes_status_schema(),
         "hermes_observations_schema": hermes_observations_schema(),
         "default_detector_pack": default_detector_pack().to_dict(),

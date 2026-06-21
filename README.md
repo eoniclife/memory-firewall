@@ -14,11 +14,11 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository is in MF-15: a first observe-only Hermes hook alpha, Hermes
+This repository is in MF-16: a first observe-only Hermes hook alpha, Hermes
 user-plugin shim installer, redacted recent-observations readout, and local
-Hermes checkup over the existing Memory Firewall scan/detector/report surfaces,
-with the checkup aligned to the `plugins.enabled` list style emitted by the
-Hermes CLI.
+Hermes checkup/report over the existing Memory Firewall scan/detector/report
+surfaces, with the checkup aligned to the `plugins.enabled` list style emitted
+by the Hermes CLI.
 
 Implemented now:
 
@@ -46,10 +46,11 @@ Implemented now:
   enable entry-point-only plugins;
 - local Hermes diagnostics JSONL, `memory-firewall hermes status`, and
   redacted `memory-firewall hermes observations`;
+- local redacted `memory-firewall hermes report`;
 - adapter capability report model and schema;
 - a built-in fake adapter conformance probe;
 - machine-readable event/finding/detector/state-analysis/scan/review/demo/proxy/report/Hermes
-  checkup, status, and observations schemas;
+  checkup, report, status, and observations schemas;
 - risk taxonomy and claim budget;
 - CLI commands for `doctor`, `schema`, `risks`, `claims`, `policy`, `detect`,
   `analyze`, `scan`, `watch`, `review`, `demo`, `proxy`, `report`, `hermes`, and
@@ -85,6 +86,7 @@ uv run --python 3.12 --extra dev memory-firewall schema reference-proxy-result
 uv run --python 3.12 --extra dev memory-firewall schema report-result
 uv run --python 3.12 --extra dev memory-firewall schema redacted-report-export
 uv run --python 3.12 --extra dev memory-firewall schema hermes-checkup
+uv run --python 3.12 --extra dev memory-firewall schema hermes-report
 uv run --python 3.12 --extra dev memory-firewall schema hermes-status
 uv run --python 3.12 --extra dev memory-firewall schema hermes-observations
 uv run --python 3.12 --extra dev memory-firewall risks
@@ -105,6 +107,7 @@ uv run --python 3.12 --extra dev memory-firewall proxy reference --mode overlay 
 uv run --python 3.12 --extra dev memory-firewall proxy reference --mode enforce --json
 uv run --python 3.12 --extra dev memory-firewall report demo --out ./memory-integrity-report --json
 uv run --python 3.12 --extra dev memory-firewall hermes checkup --json
+uv run --python 3.12 --extra dev memory-firewall hermes report --out ./hermes-memory-report --json
 uv run --python 3.12 --extra dev memory-firewall hermes status --json
 uv run --python 3.12 --extra dev memory-firewall hermes observations --limit 20 --json
 uv run --python 3.12 --extra dev memory-firewall conformance demo --json
@@ -112,7 +115,7 @@ uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 
 ## Hermes Hook Alpha
 
-The MF-15 Hermes integration is observe-only. Install the package into the same
+The MF-16 Hermes integration is observe-only. Install the package into the same
 Python environment that runs Hermes, install the Hermes user-plugin shim, enable
 the `memory-firewall` plugin in Hermes, then start a fresh Hermes session.
 
@@ -121,6 +124,7 @@ python -m pip install -e .
 memory-firewall hermes install-plugin
 hermes plugins enable memory-firewall
 memory-firewall hermes checkup --json
+memory-firewall hermes report --out ./hermes-memory-report --open
 memory-firewall hermes status --json
 memory-firewall hermes observations --limit 20 --json
 ```
@@ -149,6 +153,13 @@ the local Hermes diagnostics: recorded time, hook/tool, redacted target
 namespace, local row handle, level, disposition, finding count, contradiction
 count, risk categories, and detector names. It does not print raw candidate
 memory text.
+
+`memory-firewall hermes report --out ./hermes-memory-report --open` writes a
+local `report.json`, `index.html`, and redacted `redacted-share.json` over the
+same Hermes diagnostics. The local report includes setup status, observation
+counts, redacted row handles, detector/risk counts, and next steps. The
+redacted share export removes local filesystem paths and does not include raw
+candidate memory text.
 
 ## Product Boundary
 
@@ -231,6 +242,11 @@ to prove the readout path. It remains observe-only.
 MF-15 fixes a real-Hermes dogfood issue: Hermes can serialize
 `plugins.enabled` list items at the same indentation level as `enabled:`, and
 the checkup now recognizes that valid config shape.
+
+MF-16 adds `memory-firewall hermes report --out <dir> --json|--open`. The
+command writes a local redacted Hermes diagnostics report over existing
+observations. It is not a raw trace export, hosted dashboard, telemetry service,
+provider replacement, or enforcement proof.
 
 ## Relationship To Agent Memory Contracts
 

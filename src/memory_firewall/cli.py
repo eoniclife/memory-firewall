@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import webbrowser
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, TextIO
@@ -18,9 +19,11 @@ from .demo import run_poison_demo
 from .doctor import doctor_report
 from .hermes import (
     check_hermes_setup,
+    generate_hermes_report,
     install_hermes_plugin_shim,
     recent_hermes_observations,
     summarize_hermes_observations,
+    write_hermes_report_bundle,
 )
 from .models import MemoryEvent
 from .policy import DISPOSITION_ORDER, SEVERITY_ORDER, PolicyConfig
@@ -51,6 +54,7 @@ from .schema import (
     finding_schema,
     hermes_checkup_schema,
     hermes_observations_schema,
+    hermes_report_schema,
     hermes_status_schema,
     override_receipt_schema,
     policy_schema,
@@ -117,6 +121,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "report-result",
             "redacted-report-export",
             "hermes-checkup",
+            "hermes-report",
             "hermes-status",
             "hermes-observations",
             "bundle",
@@ -407,6 +412,41 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write one synthetic local observation to prove the readout path.",
     )
     hermes_checkup_parser.add_argument("--json", action="store_true", dest="as_json")
+    hermes_report_parser = hermes_subparsers.add_parser(
+        "report",
+        help="Write a local redacted report over Hermes Memory Firewall diagnostics.",
+    )
+    hermes_report_parser.add_argument(
+        "--hermes-home",
+        help="Hermes home directory. Defaults to HERMES_HOME or ~/.hermes.",
+    )
+    hermes_report_parser.add_argument(
+        "--state-dir",
+        help="Directory containing Hermes Memory Firewall JSONL diagnostics.",
+    )
+    hermes_report_parser.add_argument(
+        "--out",
+        required=True,
+        help="Directory for report.json, index.html, and redacted-share.json.",
+    )
+    hermes_report_parser.add_argument(
+        "--limit",
+        type=_positive_int,
+        default=50,
+        help="Maximum number of recent observations to include.",
+    )
+    hermes_report_parser.add_argument(
+        "--write-sample",
+        action="store_true",
+        help="Write one synthetic local observation before generating the report.",
+    )
+    hermes_report_parser.add_argument(
+        "--open",
+        action="store_true",
+        dest="open_report",
+        help="Open the generated local HTML report in the default browser.",
+    )
+    hermes_report_parser.add_argument("--json", action="store_true", dest="as_json")
     hermes_install_parser = hermes_subparsers.add_parser(
         "install-plugin",
         help="Install the Hermes user-plugin shim for current Hermes CLI discovery.",
@@ -474,6 +514,8 @@ def _run_schema(name: str, stdout: TextIO) -> int:
         payload = redacted_report_export_schema()
     elif name == "hermes-checkup":
         payload = hermes_checkup_schema()
+    elif name == "hermes-report":
+        payload = hermes_report_schema()
     elif name == "hermes-status":
         payload = hermes_status_schema()
     elif name == "hermes-observations":
@@ -983,6 +1025,49 @@ def _run_hermes_checkup(
     return 0 if result.overall_status == "ready" else 1
 
 
+def _run_hermes_report(
+    hermes_home: str | None,
+    state_dir: str | None,
+    output_dir: str,
+    limit: int,
+    write_sample: bool,
+    open_report: bool,
+    as_json: bool,
+    stdout: TextIO,
+) -> int:
+    report = generate_hermes_report(
+        hermes_home=hermes_home,
+        state_dir=state_dir,
+        limit=limit,
+        write_sample=write_sample,
+    )
+    bundle = write_hermes_report_bundle(report, output_dir)
+    if open_report:
+        webbrowser.open(bundle.html_path.resolve().as_uri())
+    if as_json:
+        _print_json(bundle.to_dict(), stdout)
+    else:
+        print(f"{report.report_version}: {report.title}", file=stdout)
+        print(f"- overall: {report.setup.overall_status}", file=stdout)
+        print(f"- html: {bundle.html_path}", file=stdout)
+        print(f"- report json: {bundle.report_json_path}", file=stdout)
+        print(f"- redacted share: {bundle.redacted_export_path}", file=stdout)
+        print(f"- observations: {report.summary.total_observations}", file=stdout)
+        print(f"- high-risk: {report.summary.high_risk_observations}", file=stdout)
+        print(f"- returned rows: {report.summary.returned_observations}", file=stdout)
+        print("- observe-only: true", file=stdout)
+        if report.next_steps:
+            print("- next steps:", file=stdout)
+            for step in report.next_steps:
+                print(f"  - {step}", file=stdout)
+    if (
+        report.setup.overall_status == "ready"
+        and report.summary.high_risk_observations == 0
+    ):
+        return 0
+    return 1
+
+
 def _run_hermes_install_plugin(
     hermes_home: str | None,
     force: bool,
@@ -1147,6 +1232,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 state_dir,
                 int(args.limit),
                 bool(args.write_sample),
+                bool(args.as_json),
+                sys.stdout,
+            )
+        if hermes_command == "report":
+            hermes_home = None if args.hermes_home is None else str(args.hermes_home)
+            state_dir = None if args.state_dir is None else str(args.state_dir)
+            return _run_hermes_report(
+                hermes_home,
+                state_dir,
+                str(args.out),
+                int(args.limit),
+                bool(args.write_sample),
+                bool(args.open_report),
                 bool(args.as_json),
                 sys.stdout,
             )

@@ -1,11 +1,11 @@
 # Memory Firewall Product Contract
 
-MF-15 keeps the local Hermes setup checkup aligned with the config shape emitted
-by the Hermes CLI, over the first observe-only Hermes hook alpha, Hermes
-user-plugin shim installer, redacted Hermes observations readout, and existing
-scan, detector, review, proxy, and report surfaces while keeping broad real
-memory-store scanning, provider replacement, trusted ledger writes, hosted
-dashboards, and production enforcement claims out of scope.
+MF-16 adds a local redacted Hermes diagnostics report over the first
+observe-only Hermes hook alpha, Hermes user-plugin shim installer, redacted
+Hermes observations readout, local Hermes checkup, and existing scan, detector,
+review, proxy, and report surfaces while keeping broad real memory-store
+scanning, provider replacement, trusted ledger writes, hosted dashboards, and
+production enforcement claims out of scope.
 
 ## Category Line
 
@@ -26,16 +26,16 @@ memory-firewall
     event-stream scan/watch, local review queue, override receipts, trusted-read
     preview, poisoning demo, reference proxy, local static report, redacted
     share export, Hermes observe-only hook alpha, Hermes user-plugin shim
-    installer, redacted Hermes observations readout, local Hermes checkup,
-    conformance probe, and CLI shell for the future inspection/demo/reference
-    guardrail
+    installer, redacted Hermes observations readout, local Hermes checkup, local
+    Hermes diagnostics report, conformance probe, and CLI shell for the future
+    inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-15 Allows
+## MF-16 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -115,6 +115,13 @@ private orchestration layer
   redacted observations;
 - explicit synthetic local observation writes for first-run readout validation;
 - machine-readable `hermes-checkup` schema;
+- `memory-firewall hermes report --out <dir> --json`;
+- `memory-firewall hermes report --out <dir> --write-sample`;
+- local Hermes report files `report.json`, `index.html`, and
+  `redacted-share.json`;
+- redacted Hermes report rows with local observation handles, setup status,
+  detector/risk counts, and next steps;
+- machine-readable `hermes-report` schema;
 - opt-in turn-level scanning for implicit memory providers via
   `MEMORY_FIREWALL_HERMES_SCAN_TURNS=1`;
 - local configuration of the Hermes diagnostics directory via
@@ -128,7 +135,7 @@ private orchestration layer
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-15 Does Not Allow
+## MF-16 Does Not Allow
 
 - broad real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -157,6 +164,8 @@ private orchestration layer
 - claims that Hermes checkup proves a live Hermes runtime has loaded the plugin;
 - claims that Hermes checkup proves runtime enforcement, provider replacement,
   or write suppression;
+- claims that the Hermes report is a raw trace export, approved-memory ledger,
+  hosted dashboard, telemetry service, or enforcement audit;
 - automatic trusted-context injection into Hermes prompts;
 - claims that the local report is a hosted dashboard, telemetry service, auth
   system, billing system, or server process;
@@ -486,6 +495,16 @@ MF-14 adds:
 MF-15 fixes the checkup's local `plugins.enabled` hint parsing so it recognizes
 the valid YAML list style emitted by Hermes' own `plugins enable` command.
 
+MF-16 adds:
+
+- `memory-firewall hermes report --out <dir>`;
+- `memory-firewall hermes report --out <dir> --json`;
+- `memory-firewall hermes report --out <dir> --write-sample`;
+- `memory-firewall hermes report --out <dir> --open`;
+- `memory-firewall schema hermes-report`;
+- `--hermes-home`, `--state-dir`, `--limit`, `--write-sample`, `--open`, and
+  `--json` report options.
+
 The Hermes hook alpha is deliberately observe-only. It can be enabled by Hermes
 as a standalone plugin and can run alongside the active Hermes memory provider.
 It does not set `memory.provider`, wrap a provider, replace Mem0/Honcho, or
@@ -534,6 +553,15 @@ private permissions, and whether redacted observations are readable. With
 `--write-sample`, it writes one synthetic local observation to prove the readout
 path. It does not prove a live Hermes runtime has loaded the plugin in a current
 session.
+
+The MF-16 Hermes report is a local redacted diagnostics report over the same
+Hermes observations. It writes `report.json`, `index.html`, and
+`redacted-share.json` into the chosen output directory. The local report can
+show local paths, setup status, observation counts, redacted row handles,
+detector/risk counts, and next steps. The redacted share export removes local
+filesystem paths and does not include raw candidate memory text. The report is
+not a raw trace export, approved-memory ledger, hosted dashboard, telemetry
+service, provider replacement, or enforcement proof.
 
 ## Adapter Capability Surface
 
