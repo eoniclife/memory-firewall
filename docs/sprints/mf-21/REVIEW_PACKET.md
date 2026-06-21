@@ -66,6 +66,12 @@ Completed so far:
   in a fresh temp venv: `doctor`, `schema adapter-observe-result`,
   `adapter observe-memory`, and `adapter observations` passed with redacted
   output.
+- fix-pass reviewer smokes:
+  - `adapter observe-memory --target sk-ABCDEFGHIJKLMNOPQRSTUV --json` redacted
+    the returned `target_namespace` in both observe and observations output;
+  - corrupt `observations.jsonl` line containing `sk-test-secret` returned a
+    schema-valid WARN diagnostic with `diagnostic-invalid-json`, exit `0`, and
+    no raw line content in JSON output.
 
 Still required before merge:
 
@@ -112,3 +118,22 @@ Reviewer should check:
 - high-risk exit behavior is deterministic;
 - public docs avoid real-store scanning, provider replacement, enforcement, or
   framework-specific adapter claims.
+
+## Review Fix Pass
+
+Independent reviewer Ramanujan requested changes on exact head
+`4f3eaca1376a0fbda8d5b8f7f081dddd3fab7048`:
+
+- token-shaped target namespaces such as `sk-...` were returned because the
+  first implementation treated every syntactically safe target as safe;
+- a corrupt local `observations.jsonl` line raised `json.JSONDecodeError`, making
+  `adapter observations` crash instead of returning a redacted diagnostic.
+
+Fix pass:
+
+- generic adapter summaries now expose only a small allowlist of public target
+  namespaces and redact all unknown targets as `redacted-target`;
+- invalid and non-object JSONL rows are converted to schema-valid WARN/review
+  diagnostics without echoing the raw line;
+- tests cover token-shaped target redaction, malformed-row sanitization, invalid
+  JSONL diagnostics, and the CLI corrupt-JSONL path.

@@ -112,6 +112,33 @@ def test_adapter_bridge_redacts_user_controlled_target_namespace(tmp_path) -> No
     assert "sk-test-secret" not in rendered
 
 
+def test_adapter_bridge_redacts_token_shaped_target_namespace(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    state_dir = tmp_path / "bridge-state"
+    secret_target = "sk-ABCDEFGHIJKLMNOPQRSTUV"
+
+    result = observe_memory_candidate(
+        content="The user likes local tools.",
+        target_namespace=secret_target,
+        source_type=SourceType.USER_MESSAGE,
+        source_authority=SourceAuthority.UNTRUSTED,
+        adapter_name="test-agent",
+        state_dir=state_dir,
+    )
+    payload = recent_adapter_observations(state_dir=state_dir).to_dict()
+    rendered = json.dumps(
+        {"result": result.to_dict(), "observations": payload},
+        sort_keys=True,
+    )
+
+    Draft202012Validator(adapter_bridge_observe_result_schema()).validate(
+        result.to_dict()
+    )
+    Draft202012Validator(adapter_bridge_observations_schema()).validate(payload)
+    assert result.observation.target_namespace == "redacted-target"
+    assert payload["observations"][0]["target_namespace"] == "redacted-target"
+    assert secret_target not in rendered
+
+
 def test_adapter_bridge_recent_observations_handles_malformed_rows_safely(tmp_path) -> None:  # type: ignore[no-untyped-def]
     state_dir = tmp_path / "bridge-state"
     state_dir.mkdir()
@@ -158,4 +185,31 @@ def test_adapter_bridge_recent_observations_handles_malformed_rows_safely(tmp_pa
     assert payload["observations"][0]["finding_count"] == 0
     assert payload["observations"][0]["risk_categories"] == []
     assert payload["observations"][0]["detector_names"] == ["redacted-detector"]
+    assert "sk-test-secret" not in rendered
+
+
+def test_adapter_bridge_recent_observations_handles_invalid_jsonl_safely(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    state_dir = tmp_path / "bridge-state"
+    state_dir.mkdir()
+    raw_line = '{"bridge_version": "mf-21", "target": "sk-test-secret"'
+    (state_dir / ADAPTER_BRIDGE_OBSERVATIONS_FILENAME).write_text(
+        raw_line + "\n",
+        encoding="utf-8",
+    )
+
+    payload = recent_adapter_observations(state_dir=state_dir).to_dict()
+    rendered = json.dumps(payload, sort_keys=True)
+
+    Draft202012Validator(adapter_bridge_observations_schema()).validate(payload)
+    assert payload["total_observations"] == 1
+    assert payload["warn_observations"] == 1
+    assert payload["high_risk_observations"] == 0
+    assert payload["observations"][0]["adapter_name"] == "diagnostics"
+    assert payload["observations"][0]["target_namespace"] == "diagnostics"
+    assert payload["observations"][0]["risk_categories"] == [
+        "anomalous_persistence"
+    ]
+    assert payload["observations"][0]["detector_names"] == [
+        "diagnostic-invalid-json"
+    ]
     assert "sk-test-secret" not in rendered

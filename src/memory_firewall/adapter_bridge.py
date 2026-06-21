@@ -32,9 +32,34 @@ ADAPTER_BRIDGE_STATE_DIR_MODE = 0o700
 ADAPTER_BRIDGE_STATE_FILE_MODE = 0o600
 _SAFE_TARGET_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _RFC3339_TIMESTAMP_RE = re.compile(RFC3339_TIMESTAMP_PATTERN)
+_PUBLIC_TARGET_NAMESPACES = frozenset(
+    (
+        "crm",
+        "diagnostics",
+        "facts",
+        "global",
+        "local",
+        "memory",
+        "notes",
+        "preferences",
+        "profile",
+        "project",
+        "semantic",
+        "session",
+        "system",
+        "tool",
+        "user",
+    )
+)
 _RISK_CATEGORIES = frozenset(item.value for item in RiskCategory)
 _PUBLIC_DETECTOR_NAMES = frozenset(
     definition.name for definition in default_detector_pack().definitions
+)
+_PUBLIC_DIAGNOSTIC_DETECTOR_NAMES = frozenset(
+    (
+        "diagnostic-invalid-json",
+        "diagnostic-non-object-json",
+    )
 )
 
 
@@ -91,17 +116,27 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
         return []
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
+        for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
-            payload = json.loads(line)
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                rows.append(_diagnostic_row(line_number, "invalid-json"))
+                continue
             if isinstance(payload, dict):
                 rows.append(payload)
+            else:
+                rows.append(_diagnostic_row(line_number, "non-object-json"))
     return rows
 
 
 def _safe_target_namespace(value: object) -> str:
-    if isinstance(value, str) and _SAFE_TARGET_RE.fullmatch(value):
+    if (
+        isinstance(value, str)
+        and _SAFE_TARGET_RE.fullmatch(value)
+        and value in _PUBLIC_TARGET_NAMESPACES
+    ):
         return value
     return "redacted-target"
 
@@ -147,7 +182,7 @@ def _tuple_field_from_findings(
             if raw in _RISK_CATEGORIES:
                 values.add(raw)
         elif field_name == "detector_name":
-            if raw in _PUBLIC_DETECTOR_NAMES:
+            if raw in _PUBLIC_DETECTOR_NAMES or raw in _PUBLIC_DIAGNOSTIC_DETECTOR_NAMES:
                 values.add(raw)
             else:
                 values.add("redacted-detector")
@@ -162,6 +197,39 @@ def _non_negative_int(value: object) -> int:
     if isinstance(value, int):
         return max(value, 0)
     return 0
+
+
+def _diagnostic_row(line_number: int, error_type: str) -> dict[str, Any]:
+    detector_name = (
+        "diagnostic-invalid-json"
+        if error_type == "invalid-json"
+        else "diagnostic-non-object-json"
+    )
+    return {
+        "bridge_version": ADAPTER_BRIDGE_VERSION,
+        "recorded_at": "unavailable-recorded-at",
+        "adapter_name": "diagnostics",
+        "event": {
+            "operation": MemoryOperation.UPSERT.value,
+            "source_authority": SourceAuthority.UNTRUSTED.value,
+            "target_namespace": "diagnostics",
+        },
+        "scan": {
+            "level": ScanEventLevel.WARN.value,
+            "highest_disposition": RecommendedDisposition.REVIEW.value,
+            "finding_count": 1,
+            "contradiction_count": 0,
+            "detector_result": {
+                "findings": [
+                    {
+                        "risk_category": RiskCategory.ANOMALOUS_PERSISTENCE.value,
+                        "detector_name": detector_name,
+                        "line_number": line_number,
+                    }
+                ]
+            },
+        },
+    }
 
 
 @dataclass(frozen=True, slots=True)

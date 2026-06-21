@@ -300,6 +300,36 @@ def test_adapter_observations_cli_reads_redacted_rows(tmp_path, capsys) -> None:
     assert candidate not in rendered
 
 
+def test_adapter_observations_cli_handles_corrupt_jsonl_without_raw_echo(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    state_dir = tmp_path / "bridge-state"
+    state_dir.mkdir()
+    raw_line = '{"bridge_version": "mf-21", "target": "sk-test-secret"'
+    (state_dir / "observations.jsonl").write_text(raw_line + "\n", encoding="utf-8")
+
+    assert (
+        main(
+            [
+                "adapter",
+                "observations",
+                "--state-dir",
+                str(state_dir),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    rendered = json.dumps(payload, sort_keys=True)
+
+    assert payload["warn_observations"] == 1
+    assert payload["high_risk_observations"] == 0
+    assert payload["observations"][0]["detector_names"] == [
+        "diagnostic-invalid-json"
+    ]
+    assert "sk-test-secret" not in rendered
+
+
 def test_hermes_install_plugin_json_command(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
     assert (
         main(
