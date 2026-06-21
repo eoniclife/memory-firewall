@@ -945,8 +945,9 @@ def _match_retrieved(
     retrieved_by_provider: Mapping[tuple[str, str], RetrievedMemoryRecord],
     retrieved_by_persisted_id: Mapping[str, RetrievedMemoryRecord],
     retrieved_by_digest: Mapping[tuple[str, str], RetrievedMemoryRecord],
-) -> tuple[RetrievedMemoryRecord | None, tuple[str, ...]]:
+) -> tuple[RetrievedMemoryRecord | None, tuple[str, ...], bool]:
     limitations: list[str] = []
+    scope_mismatch = False
     if candidate.provider_memory_id is not None:
         provider_match = retrieved_by_provider.get(
             (candidate.lineage_id, candidate.provider_memory_id)
@@ -954,20 +955,23 @@ def _match_retrieved(
         if provider_match is not None:
             if provider_match.scope != candidate.scope:
                 limitations.append("provider id matched but retrieval scope differs")
-            return provider_match, tuple(limitations)
+                scope_mismatch = True
+            return provider_match, tuple(limitations), scope_mismatch
     if persisted is not None:
         persisted_match = retrieved_by_persisted_id.get(persisted.persisted_record_id)
         if persisted_match is not None:
             if persisted_match.scope != candidate.scope:
                 limitations.append("persisted id matched but retrieval scope differs")
-            return persisted_match, tuple(limitations)
+                scope_mismatch = True
+            return persisted_match, tuple(limitations), scope_mismatch
     digest_match = retrieved_by_digest.get((candidate.lineage_id, candidate.content_digest))
     if digest_match is not None:
         if digest_match.scope != candidate.scope:
             limitations.append("content digest matched but retrieval scope differs")
+            scope_mismatch = True
         limitations.append("retrieval matched by content digest")
-        return digest_match, tuple(limitations)
-    return None, ("candidate was not linked to retrieved memory",)
+        return digest_match, tuple(limitations), scope_mismatch
+    return None, ("candidate was not linked to retrieved memory",), False
 
 
 def _scan_status(candidate: ExtractedCandidateRecord) -> CandidateScanStatus:
@@ -1102,13 +1106,15 @@ def generate_lineage_report(value: Mapping[str, Any]) -> LineageReport:
             persisted_by_provider,
             persisted_by_digest,
         )
-        retrieved_match, retrieval_limitations = _match_retrieved(
+        retrieved_match, retrieval_limitations, retrieval_scope_mismatch = _match_retrieved(
             candidate,
             persisted_match,
             retrieved_by_provider,
             retrieved_by_persisted_id,
             retrieved_by_digest,
         )
+        if retrieval_scope_mismatch:
+            link_status = LineageLinkStatus.SCOPE_MISMATCH
         if persisted_match is not None:
             matched_persisted.add(persisted_match.persisted_record_id)
         if retrieved_match is not None:

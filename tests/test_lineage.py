@@ -206,6 +206,36 @@ def test_lineage_report_flags_cross_scope_match() -> None:
     assert "scope_mismatch" in {issue["code"] for issue in payload["issues"]}
 
 
+def test_lineage_report_flags_cross_scope_retrieval_match() -> None:
+    packet = _base_packet()
+    content = "User prefers review before production deploys."
+    packet["extracted_candidates"] = [
+        _candidate("candidate", content, "mem-shared", "review"),
+    ]
+    packet["persisted_memories"] = [
+        _persisted("q-candidate", content, "mem-shared"),
+    ]
+    packet["retrieved_memories"] = [
+        _retrieved(
+            "ret-scope",
+            content,
+            "mem-shared",
+            "q-candidate",
+            downstream_used=True,
+            scope="tenant:other",
+        ),
+    ]
+
+    payload = generate_lineage_report(packet).to_dict()
+
+    assert payload["candidate_verdicts"][0]["link_status"] == "scope_mismatch"
+    assert payload["summary"]["scope_mismatches"] == 1
+    assert "provider id matched but retrieval scope differs" in (
+        payload["candidate_verdicts"][0]["limitations"]
+    )
+    assert "scope_mismatch" in {issue["code"] for issue in payload["issues"]}
+
+
 def test_lineage_report_marks_case_level_scan_as_not_candidate_level() -> None:
     packet = _base_packet()
     content = "User prefers skipping tests before release."
