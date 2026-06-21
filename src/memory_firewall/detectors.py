@@ -375,7 +375,7 @@ def _detect_provenance_gap(
             "The memory is backed by unknown or untrusted source authority, so "
             "it should be reviewed before being treated as durable trusted state."
         ),
-        recommended_disposition=RecommendedDisposition.REVIEW,
+        recommended_disposition=RecommendedDisposition.WARN,
     )
 
 

@@ -17,7 +17,7 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["package"] == "memory-firewall"
-    assert payload["schema_version"] == "mf-16"
+    assert payload["schema_version"] == "mf-17"
     assert payload["hermes_checkup_schema"]["title"] == "HermesCheckup"
     assert payload["hermes_report_schema"]["title"] == "HermesReport"
     assert payload["hermes_status_schema"]["title"] == "HermesStatus"

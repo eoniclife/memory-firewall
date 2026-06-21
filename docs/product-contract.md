@@ -1,11 +1,11 @@
 # Memory Firewall Product Contract
 
-MF-16 adds a local redacted Hermes diagnostics report over the first
+MF-17 calibrates signal levels from real Hermes dogfood over the first
 observe-only Hermes hook alpha, Hermes user-plugin shim installer, redacted
-Hermes observations readout, local Hermes checkup, and existing scan, detector,
-review, proxy, and report surfaces while keeping broad real memory-store
-scanning, provider replacement, trusted ledger writes, hosted dashboards, and
-production enforcement claims out of scope.
+Hermes observations readout, local Hermes checkup/report, and existing scan,
+detector, review, proxy, and report surfaces while keeping broad real
+memory-store scanning, provider replacement, trusted ledger writes, hosted
+dashboards, and production enforcement claims out of scope.
 
 ## Category Line
 
@@ -35,7 +35,7 @@ private orchestration layer
     this public repository
 ```
 
-## MF-16 Allows
+## MF-17 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -70,6 +70,10 @@ private orchestration layer
   - `1`: completed with at least one high-risk event;
   - `2`: one or more invalid input lines were found;
   - `130`: watch was interrupted before clean EOF;
+- provenance-only untrusted memory writes to surface as WARN/review signals
+  rather than HIGH-RISK alerts;
+- state contradictions, blocked low-authority contradictions, and detector
+  REVIEW/QUARANTINE findings to remain HIGH-RISK;
 - a local file-backed review queue for high-risk scan events;
 - deterministic review item ids and item hashes;
 - explicit allow/reject decisions with required reasons;
@@ -135,7 +139,7 @@ private orchestration layer
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-16 Does Not Allow
+## MF-17 Does Not Allow
 
 - broad real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -505,6 +509,14 @@ MF-16 adds:
 - `--hermes-home`, `--state-dir`, `--limit`, `--write-sample`, `--open`, and
   `--json` report options.
 
+MF-17 calibrates signal levels from real Hermes dogfood:
+
+- provenance-only untrusted memory writes are WARN/review signals;
+- contradictions and blocked low-authority contradictions remain HIGH-RISK;
+- detector REVIEW/QUARANTINE findings remain HIGH-RISK;
+- Hermes status, observations, and report summaries count those calibrated
+  levels consistently.
+
 The Hermes hook alpha is deliberately observe-only. It can be enabled by Hermes
 as a standalone plugin and can run alongside the active Hermes memory provider.
 It does not set `memory.provider`, wrap a provider, replace Mem0/Honcho, or
@@ -562,6 +574,11 @@ detector/risk counts, and next steps. The redacted share export removes local
 filesystem paths and does not include raw candidate memory text. The report is
 not a raw trace export, approved-memory ledger, hosted dashboard, telemetry
 service, provider replacement, or enforcement proof.
+
+The MF-17 signal calibration does not approve provenance-only memory, promote it
+to trusted state, or suppress review. It only prevents normal untrusted agent
+memory writes from looking as urgent as injection, secret, contradiction, or
+policy-quarantine events.
 
 ## Adapter Capability Surface
 

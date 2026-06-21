@@ -130,6 +130,35 @@ def test_hermes_observation_persists_jsonl_and_status(tmp_path) -> None:  # type
     assert (tmp_path / "observations.jsonl").exists()
 
 
+def test_hermes_benign_memory_tool_write_is_warn_not_high_risk(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    events = memory_events_from_hermes_tool_call(
+        "memory",
+        {
+            "action": "add",
+            "target": "memory",
+            "content": "Remember that the local adapter dogfood succeeded.",
+        },
+        timestamp="2026-06-20T15:00:00Z",
+        session_id="session-1",
+        tool_call_id="tool-1",
+        turn_id="turn-1",
+    )
+
+    observations = record_hermes_events(
+        events,
+        hook_name="post_tool_call",
+        tool_name="memory",
+        state_dir=tmp_path,
+    )
+    status = summarize_hermes_observations(state_dir=tmp_path)
+
+    assert observations[0].scan.level == ScanEventLevel.WARN
+    assert observations[0].scan.highest_disposition.value == "warn"
+    assert status.total_observations == 1
+    assert status.warn_observations == 1
+    assert status.high_risk_observations == 0
+
+
 def test_hermes_recent_observations_are_newest_first_and_redacted(tmp_path) -> None:  # type: ignore[no-untyped-def]
     first = memory_events_from_hermes_tool_call(
         "memory",
@@ -630,7 +659,7 @@ def test_hermes_report_writes_redacted_local_bundle(tmp_path) -> None:  # type: 
     bundle = write_hermes_report_bundle(report, output_dir)
 
     Draft202012Validator(hermes_report_schema()).validate(payload)
-    assert payload["report_version"] == "mf-16"
+    assert payload["report_version"] == "mf-17"
     assert payload["integration_version"] == HERMES_INTEGRATION_VERSION
     assert payload["setup"]["overall_status"] == "ready"
     assert payload["summary"]["high_risk_observations"] == 1
@@ -748,11 +777,13 @@ def test_hermes_status_cli_reads_observation_dir(tmp_path, capsys) -> None:  # t
         state_dir=tmp_path,
     )
 
-    assert main(["hermes", "status", "--state-dir", str(tmp_path), "--json"]) == 1
+    assert main(["hermes", "status", "--state-dir", str(tmp_path), "--json"]) == 0
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["integration_version"] == HERMES_INTEGRATION_VERSION
     assert payload["total_observations"] == 1
+    assert payload["warn_observations"] == 1
+    assert payload["high_risk_observations"] == 0
     assert payload["observe_only"] is True
     assert payload["production_enforcement"] is False
 
