@@ -7,13 +7,14 @@ Base main: `ab51d66ff1e0f3643a20dac2d2bad9119e4984ee`
 MF-27 adds a bounded candidate-level lineage surface:
 
 - `src/memory_firewall/lineage.py` models source, extracted-candidate,
-  persisted-memory, and retrieved-memory evidence stages;
+  Memory Firewall scan, persisted-memory, and retrieved-memory evidence stages;
 - `generate_lineage_report(...)` links candidates to persisted and retrieved
-  records by provider memory id, then by exact content digest with explicit
-  weaker-confidence limitations;
+  records by provider memory id plus exact content digest, persisted id plus
+  exact content digest, or unique content digest with explicit weaker-confidence
+  limitations;
 - the report emits per-candidate verdicts including persisted status, retrieved
   status, downstream-use status, Memory Firewall event id, disposition, finding
-  count, scan status, and linkage status;
+  count, scan status, persisted-link status, and retrieval-link status;
 - `memory-firewall lineage report <path> --json` prints the report and exits
   nonzero when unresolved lineage issues remain;
 - `memory-firewall schema lineage-report` exposes the MF-27 report schema;
@@ -54,10 +55,15 @@ Check especially:
   maximum disposition;
 - whether digest-only linking is clearly marked as weaker than provider-id
   linking;
+- whether scan records must match candidate id, digest, and scope before a
+  candidate-level Memory Firewall disposition is reported;
+- whether provider-id matches also require exact content-digest agreement;
 - whether downstream-used candidates without candidate-level scan verdicts are
   surfaced as issues;
 - whether scope mismatches, mutated persisted text, and orphan retrievals are
   caught;
+- whether duplicate IDs/digests and reused local IDs across lineages avoid
+  arbitrary last-record-wins behavior;
 - whether CLI/schema/docs avoid implying live provider support, write
   suppression, enforcement, or verified provenance.
 

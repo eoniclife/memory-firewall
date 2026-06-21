@@ -2317,7 +2317,8 @@ def lineage_report_schema() -> dict[str, Any]:
             "scope",
             "declared_authority",
             "verified_authority_status",
-            "link_status",
+            "persisted_link_status",
+            "retrieval_link_status",
             "persisted",
             "retrieved",
             "downstream_used",
@@ -2325,6 +2326,9 @@ def lineage_report_schema() -> dict[str, Any]:
             "memory_firewall_event_id",
             "memory_firewall_disposition",
             "memory_firewall_finding_count",
+            "case_level_memory_firewall_event_id",
+            "case_level_memory_firewall_disposition",
+            "case_level_memory_firewall_finding_count",
             "limitations",
         ],
         "properties": {
@@ -2348,7 +2352,11 @@ def lineage_report_schema() -> dict[str, Any]:
                 "enum": _enum_values(SourceAuthority),
             },
             "verified_authority_status": {"type": "string", "minLength": 1},
-            "link_status": {
+            "persisted_link_status": {
+                "type": "string",
+                "enum": _enum_values(LineageLinkStatus),
+            },
+            "retrieval_link_status": {
                 "type": "string",
                 "enum": _enum_values(LineageLinkStatus),
             },
@@ -2365,6 +2373,15 @@ def lineage_report_schema() -> dict[str, Any]:
                 "enum": [None, *(_enum_values(RecommendedDisposition))],
             },
             "memory_firewall_finding_count": {"type": "integer", "minimum": 0},
+            "case_level_memory_firewall_event_id": {"type": ["string", "null"]},
+            "case_level_memory_firewall_disposition": {
+                "type": ["string", "null"],
+                "enum": [None, *(_enum_values(RecommendedDisposition))],
+            },
+            "case_level_memory_firewall_finding_count": {
+                "type": "integer",
+                "minimum": 0,
+            },
             "limitations": {"type": "array", "items": {"type": "string"}},
         },
     }
@@ -2403,7 +2420,10 @@ def lineage_report_schema() -> dict[str, Any]:
             "unmatched_persisted_records",
             "unmatched_retrievals",
             "scope_mismatches",
-            "highest_candidate_disposition",
+            "highest_any_candidate_disposition",
+            "highest_downstream_used_candidate_disposition",
+            "downstream_used_candidates_escalated",
+            "downstream_used_candidates_unscanned",
         ],
         "properties": {
             "source_events": {"type": "integer", "minimum": 0},
@@ -2417,9 +2437,21 @@ def lineage_report_schema() -> dict[str, Any]:
             "unmatched_persisted_records": {"type": "integer", "minimum": 0},
             "unmatched_retrievals": {"type": "integer", "minimum": 0},
             "scope_mismatches": {"type": "integer", "minimum": 0},
-            "highest_candidate_disposition": {
+            "highest_any_candidate_disposition": {
                 "type": "string",
                 "enum": _enum_values(RecommendedDisposition),
+            },
+            "highest_downstream_used_candidate_disposition": {
+                "type": "string",
+                "enum": _enum_values(RecommendedDisposition),
+            },
+            "downstream_used_candidates_escalated": {
+                "type": "integer",
+                "minimum": 0,
+            },
+            "downstream_used_candidates_unscanned": {
+                "type": "integer",
+                "minimum": 0,
             },
         },
     }

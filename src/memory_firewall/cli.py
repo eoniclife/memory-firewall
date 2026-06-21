@@ -1480,8 +1480,23 @@ def _run_lineage_report(path: str, as_json: bool, stdout: TextIO) -> int:
             file=stdout,
         )
         print(
-            f"- highest candidate disposition: "
-            f"{summary.highest_candidate_disposition.value}",
+            f"- highest any-candidate disposition: "
+            f"{summary.highest_any_candidate_disposition.value}",
+            file=stdout,
+        )
+        print(
+            f"- highest downstream-used disposition: "
+            f"{summary.highest_downstream_used_candidate_disposition.value}",
+            file=stdout,
+        )
+        print(
+            f"- downstream-used escalated: "
+            f"{summary.downstream_used_candidates_escalated}",
+            file=stdout,
+        )
+        print(
+            f"- downstream-used unscanned: "
+            f"{summary.downstream_used_candidates_unscanned}",
             file=stdout,
         )
         for issue in report.issues:
