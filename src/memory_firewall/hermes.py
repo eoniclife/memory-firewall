@@ -8,6 +8,7 @@ from hook callbacks.
 
 from __future__ import annotations
 
+import html
 import json
 import math
 import os
@@ -18,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+from .detectors import default_detector_pack
 from .models import (
     JSONScalar,
     MemoryEvent,
@@ -31,9 +33,13 @@ from .models import (
 from .scan import ScanEventLevel, ScanEventResult, scan_event
 from .version import __version__
 
-HERMES_INTEGRATION_VERSION = "mf-15"
+HERMES_INTEGRATION_VERSION = "mf-16"
+HERMES_REPORT_VERSION = "mf-16"
 HERMES_EVENTS_FILENAME = "events.jsonl"
 HERMES_OBSERVATIONS_FILENAME = "observations.jsonl"
+HERMES_REPORT_JSON_FILENAME = "report.json"
+HERMES_REPORT_HTML_FILENAME = "index.html"
+HERMES_REDACTED_EXPORT_FILENAME = "redacted-share.json"
 HERMES_PLUGIN_NAME = "memory-firewall"
 HERMES_PLUGIN_MANIFEST_FILENAME = "plugin.yaml"
 HERMES_PLUGIN_INIT_FILENAME = "__init__.py"
@@ -82,6 +88,16 @@ _SOURCE_AUTHORITIES = frozenset(item.value for item in SourceAuthority)
 _SCAN_LEVELS = frozenset(item.value for item in ScanEventLevel)
 _RECOMMENDED_DISPOSITIONS = frozenset(item.value for item in RecommendedDisposition)
 _RISK_CATEGORIES = frozenset(item.value for item in RiskCategory)
+_PUBLIC_DETECTOR_NAMES = frozenset(
+    definition.name for definition in default_detector_pack().definitions
+)
+_PUBLIC_DIAGNOSTIC_DETECTOR_NAMES = frozenset(
+    (
+        "diagnostic-invalid-json",
+        "diagnostic-non-object-json",
+        "diagnostic-malformed-row",
+    )
+)
 _CHECK_STATUSES = frozenset(("pass", "warn", "fail"))
 _CHECKUP_OVERALL_STATUSES = frozenset(("ready", "needs_setup", "attention"))
 
@@ -741,6 +757,247 @@ class HermesCheckupResult:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class HermesReportSummary:
+    """Compact counters for a local Hermes diagnostics report."""
+
+    total_observations: int
+    pass_observations: int
+    warn_observations: int
+    high_risk_observations: int
+    blocked_by_firewall: int
+    returned_observations: int
+    report_contains_raw_content: bool = False
+    hosted_dashboard: bool = False
+    production_enforcement: bool = False
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "total_observations",
+            "pass_observations",
+            "warn_observations",
+            "high_risk_observations",
+            "blocked_by_firewall",
+            "returned_observations",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        for field_name in (
+            "report_contains_raw_content",
+            "hosted_dashboard",
+            "production_enforcement",
+        ):
+            value = getattr(self, field_name)
+            if value is not False:
+                raise ValueError(f"{field_name} must be false")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "total_observations": self.total_observations,
+            "pass_observations": self.pass_observations,
+            "warn_observations": self.warn_observations,
+            "high_risk_observations": self.high_risk_observations,
+            "blocked_by_firewall": self.blocked_by_firewall,
+            "returned_observations": self.returned_observations,
+            "report_contains_raw_content": self.report_contains_raw_content,
+            "hosted_dashboard": self.hosted_dashboard,
+            "production_enforcement": self.production_enforcement,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class HermesSetupSummary:
+    """Small setup snapshot for the local Hermes report."""
+
+    overall_status: str
+    plugin_shim_installed: bool
+    manifest_matches: bool
+    init_matches: bool
+    config_mentions_plugin: bool
+    state_dir_mode: str | None
+    events_file_mode: str | None
+    observations_file_mode: str | None
+    sample_written: bool
+
+    def __post_init__(self) -> None:
+        if self.overall_status not in _CHECKUP_OVERALL_STATUSES:
+            raise ValueError("overall_status must be ready, needs_setup, or attention")
+        for field_name in (
+            "plugin_shim_installed",
+            "manifest_matches",
+            "init_matches",
+            "config_mentions_plugin",
+            "sample_written",
+        ):
+            if not isinstance(getattr(self, field_name), bool):
+                raise TypeError(f"{field_name} must be bool")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "overall_status": self.overall_status,
+            "plugin_shim_installed": self.plugin_shim_installed,
+            "manifest_matches": self.manifest_matches,
+            "init_matches": self.init_matches,
+            "config_mentions_plugin": self.config_mentions_plugin,
+            "state_dir_mode": self.state_dir_mode,
+            "events_file_mode": self.events_file_mode,
+            "observations_file_mode": self.observations_file_mode,
+            "sample_written": self.sample_written,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class HermesReportResult:
+    """Local redacted report over Hermes adapter diagnostics."""
+
+    report_version: str
+    integration_version: str
+    package_version: str
+    title: str
+    generated_at: str
+    hermes_home: str
+    state_dir: str
+    setup: HermesSetupSummary
+    summary: HermesReportSummary
+    status: HermesStatus
+    observations: HermesObservationList
+    level_counts: Mapping[str, int]
+    risk_category_counts: Mapping[str, int]
+    detector_counts: Mapping[str, int]
+    next_steps: tuple[str, ...]
+    limitations: tuple[str, ...]
+    observe_only: bool = True
+    production_enforcement: bool = False
+    raw_content_included: bool = False
+
+    def __post_init__(self) -> None:
+        if self.report_version != HERMES_REPORT_VERSION:
+            raise ValueError(f"report_version must be {HERMES_REPORT_VERSION}")
+        if self.integration_version != HERMES_INTEGRATION_VERSION:
+            raise ValueError(
+                f"integration_version must be {HERMES_INTEGRATION_VERSION}"
+            )
+        for field_name in ("package_version", "title", "generated_at"):
+            if not getattr(self, field_name):
+                raise ValueError(f"{field_name} must not be empty")
+        for field_name in ("hermes_home", "state_dir"):
+            if not getattr(self, field_name):
+                raise ValueError(f"{field_name} must not be empty")
+        if not isinstance(self.setup, HermesSetupSummary):
+            raise TypeError("setup must be HermesSetupSummary")
+        if not isinstance(self.summary, HermesReportSummary):
+            raise TypeError("summary must be HermesReportSummary")
+        if not isinstance(self.status, HermesStatus):
+            raise TypeError("status must be HermesStatus")
+        if not isinstance(self.observations, HermesObservationList):
+            raise TypeError("observations must be HermesObservationList")
+        for field_name in (
+            "level_counts",
+            "risk_category_counts",
+            "detector_counts",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, Mapping):
+                raise TypeError(f"{field_name} must be a mapping")
+            for key, count in value.items():
+                if not isinstance(key, str) or not key:
+                    raise ValueError(f"{field_name} keys must be non-empty strings")
+                if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+                    raise ValueError(
+                        f"{field_name} values must be non-negative integers"
+                    )
+        for field_name in ("next_steps", "limitations"):
+            value = getattr(self, field_name)
+            if isinstance(value, str) or not isinstance(value, tuple):
+                raise TypeError(f"{field_name} must be a tuple")
+            if any(not isinstance(item, str) or not item for item in value):
+                raise ValueError(f"{field_name} must contain non-empty strings")
+        for field_name in ("observe_only", "production_enforcement", "raw_content_included"):
+            if not isinstance(getattr(self, field_name), bool):
+                raise TypeError(f"{field_name} must be bool")
+        if self.observe_only is not True:
+            raise ValueError("observe_only must be true")
+        if self.production_enforcement is not False:
+            raise ValueError("production_enforcement must be false")
+        if self.raw_content_included is not False:
+            raise ValueError("raw_content_included must be false")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "report_version": self.report_version,
+            "integration_version": self.integration_version,
+            "package_version": self.package_version,
+            "title": self.title,
+            "generated_at": self.generated_at,
+            "hermes_home": self.hermes_home,
+            "state_dir": self.state_dir,
+            "setup": self.setup.to_dict(),
+            "summary": self.summary.to_dict(),
+            "status": self.status.to_dict(),
+            "observations": self.observations.to_dict(),
+            "level_counts": dict(sorted(self.level_counts.items())),
+            "risk_category_counts": dict(sorted(self.risk_category_counts.items())),
+            "detector_counts": dict(sorted(self.detector_counts.items())),
+            "next_steps": list(self.next_steps),
+            "limitations": list(self.limitations),
+            "observe_only": self.observe_only,
+            "production_enforcement": self.production_enforcement,
+            "raw_content_included": self.raw_content_included,
+        }
+
+    def to_redacted_share_dict(self) -> dict[str, Any]:
+        observations = self.observations.to_dict()
+        observations["state_dir"] = "redacted-local-path"
+        return {
+            "report_version": self.report_version,
+            "integration_version": self.integration_version,
+            "title": self.title,
+            "generated_at": self.generated_at,
+            "local_paths_redacted": True,
+            "raw_content_included": False,
+            "summary": self.summary.to_dict(),
+            "setup": self.setup.to_dict(),
+            "observations": observations,
+            "level_counts": dict(sorted(self.level_counts.items())),
+            "risk_category_counts": dict(sorted(self.risk_category_counts.items())),
+            "detector_counts": dict(sorted(self.detector_counts.items())),
+            "next_steps_present": bool(self.next_steps),
+            "limitations": list(self.limitations),
+            "observe_only": True,
+            "production_enforcement": False,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class HermesReportBundle:
+    """Files written for a local Hermes diagnostics report bundle."""
+
+    report: HermesReportResult
+    output_dir: Path
+    report_json_path: Path
+    html_path: Path
+    redacted_export_path: Path
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "report_version": self.report.report_version,
+            "integration_version": self.report.integration_version,
+            "title": self.report.title,
+            "summary": self.report.summary.to_dict(),
+            "setup": self.report.setup.to_dict(),
+            "files": {
+                "paths_redacted": True,
+                "report_json": self.report_json_path.name,
+                "html": self.html_path.name,
+                "redacted_export": self.redacted_export_path.name,
+            },
+            "observe_only": True,
+            "production_enforcement": False,
+            "raw_content_included": False,
+        }
+
+
 def scan_hermes_event(
     event: MemoryEvent,
     *,
@@ -1227,7 +1484,12 @@ def _tuple_field_from_findings(
             if raw in _RISK_CATEGORIES:
                 values.add(raw)
         elif key == "detector_name":
-            values.add(_safe_token(raw, default="redacted-detector"))
+            if raw in _PUBLIC_DETECTOR_NAMES:
+                values.add(raw)
+            elif raw in _PUBLIC_DIAGNOSTIC_DETECTOR_NAMES:
+                values.add(raw)
+            else:
+                values.add("redacted-detector")
         else:
             values.add(_safe_token(raw, default="redacted-value"))
     return tuple(sorted(values))
@@ -1334,21 +1596,20 @@ def summarize_hermes_observations(
     passed = 0
     blocked = 0
     latest: str | None = None
-    for row in rows:
-        if row.get("blocked_by_firewall") is True:
+    for index, row in enumerate(rows, start=1):
+        summary = _hermes_observation_summary_from_row(row, row_number=index)
+        if summary.blocked_by_firewall:
             blocked += 1
-        recorded_at = _safe_recorded_at(row.get("recorded_at"))
+        recorded_at = summary.recorded_at
         if recorded_at != "unavailable-recorded-at" and (
             latest is None or recorded_at > latest
         ):
             latest = recorded_at
-        scan = row.get("scan")
-        level = scan.get("level") if isinstance(scan, dict) else None
-        if level == ScanEventLevel.HIGH_RISK.value:
+        if summary.level == ScanEventLevel.HIGH_RISK.value:
             high_risk += 1
-        elif level == ScanEventLevel.WARN.value:
+        elif summary.level == ScanEventLevel.WARN.value:
             warn += 1
-        elif level == ScanEventLevel.PASS.value:
+        elif summary.level == ScanEventLevel.PASS.value:
             passed += 1
     return HermesStatus(
         integration_version=HERMES_INTEGRATION_VERSION,
@@ -1682,4 +1943,252 @@ def check_hermes_setup(
         next_steps=tuple(dict.fromkeys(next_steps)),
         status=status,
         recent_observations=recent,
+    )
+
+
+def _count_observation_fields(
+    observations: tuple[HermesObservationSummary, ...],
+    field_name: str,
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for observation in observations:
+        value = getattr(observation, field_name)
+        if isinstance(value, tuple):
+            values = value
+        else:
+            values = (value,)
+        for item in values:
+            if not isinstance(item, str) or not item:
+                continue
+            counts[item] = counts.get(item, 0) + 1
+    return counts
+
+
+def _hermes_report_next_steps(
+    *,
+    checkup: HermesCheckupResult,
+    limit: int,
+) -> tuple[str, ...]:
+    steps = list(checkup.next_steps)
+    if checkup.status.total_observations == 0:
+        steps.append(
+            "Run a Hermes agent session with memory-firewall enabled, or rerun "
+            "`memory-firewall hermes report --write-sample` to validate the "
+            "diagnostics readout path."
+        )
+    elif checkup.status.high_risk_observations > 0:
+        steps.append(
+            "Inspect high-risk local rows with "
+            f"`memory-firewall hermes observations --limit {limit}` and decide "
+            "whether the remembered fact should be trusted."
+        )
+    elif checkup.overall_status == "ready":
+        steps.append(
+            "Keep the observe-only adapter enabled and reopen this report after "
+            "meaningful agent memory activity."
+        )
+    return tuple(dict.fromkeys(steps))
+
+
+def generate_hermes_report(
+    *,
+    hermes_home: str | Path | None = None,
+    state_dir: str | Path | None = None,
+    limit: int = 50,
+    write_sample: bool = False,
+) -> HermesReportResult:
+    """Generate a local redacted diagnostics report over Hermes observations."""
+
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        raise ValueError("limit must be a positive integer")
+    checkup = check_hermes_setup(
+        hermes_home=hermes_home,
+        state_dir=state_dir,
+        limit=limit,
+        write_sample=write_sample,
+    )
+    observations = checkup.recent_observations
+    setup = HermesSetupSummary(
+        overall_status=checkup.overall_status,
+        plugin_shim_installed=checkup.plugin_shim_installed,
+        manifest_matches=checkup.manifest_matches,
+        init_matches=checkup.init_matches,
+        config_mentions_plugin=checkup.config_mentions_plugin,
+        state_dir_mode=checkup.state_dir_mode,
+        events_file_mode=checkup.events_file_mode,
+        observations_file_mode=checkup.observations_file_mode,
+        sample_written=checkup.sample_written,
+    )
+    summary = HermesReportSummary(
+        total_observations=checkup.status.total_observations,
+        pass_observations=checkup.status.pass_observations,
+        warn_observations=checkup.status.warn_observations,
+        high_risk_observations=checkup.status.high_risk_observations,
+        blocked_by_firewall=checkup.status.blocked_by_firewall,
+        returned_observations=observations.returned_observations,
+    )
+    return HermesReportResult(
+        report_version=HERMES_REPORT_VERSION,
+        integration_version=HERMES_INTEGRATION_VERSION,
+        package_version=__version__,
+        title="Memory Firewall Hermes Diagnostics Report",
+        generated_at=_utc_timestamp(),
+        hermes_home=checkup.hermes_home,
+        state_dir=checkup.state_dir,
+        setup=setup,
+        summary=summary,
+        status=checkup.status,
+        observations=observations,
+        level_counts=_count_observation_fields(observations.observations, "level"),
+        risk_category_counts=_count_observation_fields(
+            observations.observations,
+            "risk_categories",
+        ),
+        detector_counts=_count_observation_fields(
+            observations.observations,
+            "detector_names",
+        ),
+        next_steps=_hermes_report_next_steps(checkup=checkup, limit=limit),
+        limitations=(
+            "Local static Hermes diagnostics report only.",
+            "Observation rows are redacted handles; raw and proposed memory content are not included.",
+            "The Hermes adapter remains observe-only and does not suppress native memory writes.",
+            "High-risk findings are deterministic integrity signals, not proof of objective truth or adversarial intent.",
+            "The redacted share export removes local filesystem paths by default.",
+        ),
+    )
+
+
+def _render_hermes_counter_list(items: Mapping[str, Any]) -> str:
+    rows = []
+    for key in sorted(items):
+        value = items[key]
+        rows.append(
+            f"<li><span>{html.escape(str(key).replace('_', ' '))}</span>"
+            f"<strong>{html.escape(str(value))}</strong></li>"
+        )
+    return "\n".join(rows)
+
+
+def _render_hermes_report_rows(
+    observations: tuple[HermesObservationSummary, ...],
+) -> str:
+    rows = []
+    for item in observations:
+        rows.append(
+            "<tr>"
+            f"<td>{item.row_number}</td>"
+            f"<td>{html.escape(item.recorded_at)}</td>"
+            f"<td>{html.escape(item.level)}</td>"
+            f"<td>{html.escape(item.highest_disposition)}</td>"
+            f"<td>{html.escape(item.tool_name)}</td>"
+            f"<td>{html.escape(item.target_namespace)}</td>"
+            f"<td>{item.finding_count}</td>"
+            f"<td>{html.escape(', '.join(item.risk_categories) or 'none')}</td>"
+            f"<td>{html.escape(', '.join(item.detector_names) or 'none')}</td>"
+            f"<td>{html.escape(item.event_ref)}</td>"
+            "</tr>"
+        )
+    if rows:
+        return "".join(rows)
+    return (
+        "<tr><td colspan=\"10\">No local Hermes observations found yet.</td></tr>"
+    )
+
+
+def render_hermes_report_html(report: HermesReportResult) -> str:
+    """Render a self-contained local HTML report over Hermes diagnostics."""
+
+    limitations = "".join(
+        f"<li>{html.escape(item)}</li>" for item in report.limitations
+    )
+    next_steps = "".join(
+        f"<li>{html.escape(item)}</li>" for item in report.next_steps
+    )
+    if not next_steps:
+        next_steps = "<li>No immediate next step.</li>"
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html.escape(report.title)}</title>
+  <style>
+    body {{ font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: #151515; background: #f7f7f4; }}
+    main {{ max-width: 1120px; margin: 0 auto; padding: 32px 20px 48px; }}
+    h1, h2 {{ line-height: 1.15; }}
+    .lede {{ font-size: 1.05rem; max-width: 820px; color: #454545; }}
+    .meta {{ color: #5b5b55; font-size: 0.92rem; }}
+    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 12px; padding: 0; list-style: none; }}
+    .grid li {{ background: white; border: 1px solid #deded8; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }}
+    .grid span {{ color: #5b5b55; font-size: 0.86rem; }}
+    .grid strong {{ font-size: 1.3rem; }}
+    table {{ width: 100%; border-collapse: collapse; background: white; border: 1px solid #deded8; }}
+    th, td {{ padding: 10px 12px; border-bottom: 1px solid #e8e8e2; text-align: left; vertical-align: top; }}
+    th {{ background: #ecece5; font-size: 0.88rem; }}
+    code {{ background: #ecece5; padding: 2px 5px; border-radius: 4px; }}
+  </style>
+</head>
+<body>
+<main>
+  <h1>{html.escape(report.title)}</h1>
+  <p class="lede">This local report summarizes what the observe-only Hermes adapter has seen in persistent-memory writes. It uses redacted row handles and does not include raw candidate memory text.</p>
+  <p class="meta">Generated at {html.escape(report.generated_at)}. Hermes home: <code>{html.escape(report.hermes_home)}</code>. Diagnostics: <code>{html.escape(report.state_dir)}</code>.</p>
+  <h2>Setup</h2>
+  <ul class="grid">
+    {_render_hermes_counter_list(report.setup.to_dict())}
+  </ul>
+  <h2>Observation Summary</h2>
+  <ul class="grid">
+    {_render_hermes_counter_list(report.summary.to_dict())}
+  </ul>
+  <h2>Level Counts</h2>
+  <ul class="grid">
+    {_render_hermes_counter_list(report.level_counts or {"none": 0})}
+  </ul>
+  <h2>Risk Categories</h2>
+  <ul class="grid">
+    {_render_hermes_counter_list(report.risk_category_counts or {"none": 0})}
+  </ul>
+  <h2>Recent Redacted Observations</h2>
+  <table>
+    <thead><tr><th>Row</th><th>Recorded</th><th>Level</th><th>Disposition</th><th>Tool</th><th>Target</th><th>Findings</th><th>Risks</th><th>Detectors</th><th>Handle</th></tr></thead>
+    <tbody>{_render_hermes_report_rows(report.observations.observations)}</tbody>
+  </table>
+  <h2>Next Steps</h2>
+  <ul>{next_steps}</ul>
+  <h2>Limitations</h2>
+  <ul>{limitations}</ul>
+</main>
+</body>
+</html>
+"""
+
+
+def write_hermes_report_bundle(
+    report: HermesReportResult,
+    output_dir: str | Path,
+) -> HermesReportBundle:
+    """Write a local Hermes report JSON, HTML, and redacted share export."""
+
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    report_json_path = destination / HERMES_REPORT_JSON_FILENAME
+    html_path = destination / HERMES_REPORT_HTML_FILENAME
+    redacted_export_path = destination / HERMES_REDACTED_EXPORT_FILENAME
+    report_json_path.write_text(
+        json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    html_path.write_text(render_hermes_report_html(report), encoding="utf-8")
+    redacted_export_path.write_text(
+        json.dumps(report.to_redacted_share_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return HermesReportBundle(
+        report=report,
+        output_dir=destination,
+        report_json_path=report_json_path,
+        html_path=html_path,
+        redacted_export_path=redacted_export_path,
     )

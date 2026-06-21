@@ -17,8 +17,9 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["package"] == "memory-firewall"
-    assert payload["schema_version"] == "mf-15"
+    assert payload["schema_version"] == "mf-16"
     assert payload["hermes_checkup_schema"]["title"] == "HermesCheckup"
+    assert payload["hermes_report_schema"]["title"] == "HermesReport"
     assert payload["hermes_status_schema"]["title"] == "HermesStatus"
     assert payload["hermes_observations_schema"]["title"] == "HermesObservations"
 
@@ -143,6 +144,16 @@ def test_hermes_checkup_schema_command_prints_json(capsys) -> None:  # type: ign
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["title"] == "HermesCheckup"
+    assert payload["properties"]["observe_only"]["const"] is True
+    assert payload["properties"]["production_enforcement"]["const"] is False
+
+
+def test_hermes_report_schema_command_prints_json(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["schema", "hermes-report"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["title"] == "HermesReport"
+    assert payload["properties"]["raw_content_included"]["const"] is False
     assert payload["properties"]["observe_only"]["const"] is True
     assert payload["properties"]["production_enforcement"]["const"] is False
 

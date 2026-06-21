@@ -33,9 +33,11 @@ from memory_firewall import (
     risk_taxonomy,
     redact_report_export,
     generate_demo_report,
+    generate_hermes_report,
     HERMES_INTEGRATION_VERSION,
     hermes_checkup_schema,
     hermes_observations_schema,
+    hermes_report_schema,
     hermes_status_schema,
     run_detectors,
     scan_jsonl_events,
@@ -87,7 +89,7 @@ def test_finding_schema_uses_frozen_risk_taxonomy() -> None:
 def test_schema_bundle_includes_claim_budget() -> None:
     bundle = schema_bundle()
     budget = claim_budget()
-    assert bundle["schema_version"] == "mf-15"
+    assert bundle["schema_version"] == "mf-16"
     assert bundle["claim_budget"]["allowed"] == list(budget.allowed)
     assert any("broadly scan real stores" in item for item in budget.not_allowed)
     assert any("not a benchmark" in item for item in budget.not_allowed)
@@ -106,6 +108,7 @@ def test_schema_bundle_includes_claim_budget() -> None:
     assert "report_result_schema" in bundle
     assert "redacted_report_export_schema" in bundle
     assert "hermes_checkup_schema" in bundle
+    assert "hermes_report_schema" in bundle
     assert "hermes_status_schema" in bundle
     assert "hermes_observations_schema" in bundle
     assert bundle["default_detector_pack"]["version"] == "mf-04"
@@ -162,6 +165,7 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     Draft202012Validator.check_schema(report_result_schema())
     Draft202012Validator.check_schema(redacted_report_export_schema())
     Draft202012Validator.check_schema(hermes_checkup_schema())
+    Draft202012Validator.check_schema(hermes_report_schema())
     Draft202012Validator.check_schema(hermes_status_schema())
     Draft202012Validator.check_schema(hermes_observations_schema())
     Draft202012Validator(event_schema()).validate(event.to_dict())
@@ -182,6 +186,11 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
     Draft202012Validator(redacted_report_export_schema()).validate(
         redact_report_export(report).to_dict()
     )
+    hermes_report = generate_hermes_report(
+        hermes_home="/tmp/memory-firewall-hermes-home",
+        state_dir="/tmp/memory-firewall-hermes",
+    )
+    Draft202012Validator(hermes_report_schema()).validate(hermes_report.to_dict())
     Draft202012Validator(hermes_observations_schema()).validate(
         {
             "integration_version": HERMES_INTEGRATION_VERSION,
