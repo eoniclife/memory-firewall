@@ -1,13 +1,12 @@
 # Memory Firewall Product Contract
 
-MF-18 adds version-aware Hermes diagnostics over the first observe-only Hermes
-hook alpha, Hermes user-plugin shim installer, redacted Hermes observations
-readout, local Hermes checkup/report, calibrated signal levels from real Hermes
-dogfood, and existing scan, detector, review, proxy, and report surfaces while
-keeping broad real memory-store scanning, provider replacement, trusted ledger
-writes, hosted dashboards, and production enforcement claims out of scope. MF-19
-is a documentation and dogfood runbook pass over the same MF-18 runtime/schema
-surface.
+MF-20 adds an explicit current-version-only Hermes diagnostics lens over the
+first observe-only Hermes hook alpha, Hermes user-plugin shim installer,
+redacted Hermes observations readout, local Hermes checkup/report, calibrated
+signal levels from real Hermes dogfood, version-aware diagnostics, and existing
+scan, detector, review, proxy, and report surfaces while keeping broad real
+memory-store scanning, provider replacement, trusted ledger writes, hosted
+dashboards, and production enforcement claims out of scope.
 
 ## Category Line
 
@@ -28,16 +27,17 @@ memory-firewall
     event-stream scan/watch, local review queue, override receipts, trusted-read
     preview, poisoning demo, reference proxy, local static report, redacted
     share export, Hermes observe-only hook alpha, Hermes user-plugin shim
-    installer, version-aware redacted Hermes observations readout, local Hermes
-    checkup, local Hermes diagnostics report, conformance probe, and CLI shell
-    for the future inspection/demo/reference guardrail
+    installer, version-aware redacted Hermes observations readout,
+    current-version-only diagnostics lens, local Hermes checkup, local Hermes
+    diagnostics report, conformance probe, and CLI shell for the future
+    inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-18 Allows
+## MF-20 Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -115,6 +115,9 @@ private orchestration layer
 - `memory-firewall hermes observations --json`;
 - redacted newest-first Hermes observation summaries over local diagnostics;
 - recorded adapter-version labels on redacted Hermes observation summaries;
+- explicit `--current-version-only` filtering for Hermes observations and
+  reports;
+- all-history totals plus `matching_*` counts in filtered Hermes diagnostics;
 - machine-readable `hermes-observations` schema;
 - `memory-firewall hermes checkup --json`;
 - local Hermes setup checks over generated shim files, `plugins.enabled`
@@ -144,7 +147,7 @@ private orchestration layer
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-18 Does Not Allow
+## MF-20 Does Not Allow
 
 - broad real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -170,6 +173,8 @@ private orchestration layer
   decisions, or approved memories;
 - claims that the Hermes observations CLI is a raw trace export or safe-to-share
   transcript export;
+- claims that current-version-only Hermes views clear, delete, resolve,
+  suppress, or reclassify legacy diagnostics;
 - claims that Hermes checkup proves a live Hermes runtime has loaded the plugin;
 - claims that Hermes checkup proves runtime enforcement, provider replacement,
   or write suppression;
@@ -545,6 +550,19 @@ MF-19 documents the fresh current-version dogfood path:
   `integration_version`;
 - generate `redacted-share.json` as the safe-to-share report artifact.
 
+MF-20 adds explicit current-version-only Hermes diagnostics:
+
+- `memory-firewall hermes observations --current-version-only`;
+- `memory-firewall hermes report --current-version-only --out <dir>`;
+- filtered outputs set `observation_scope: current_version`;
+- filtered outputs retain all-history totals and expose `matching_*` counts for
+  the selected scope;
+- current-version-only report exit status is based on setup readiness and
+  whether rows exist in the selected scope plus matching high-risk rows, not
+  legacy high-risk rows outside the selected scope;
+- historical diagnostics are not deleted, rewritten, migrated, reclassified, or
+  hidden from unfiltered commands.
+
 The Hermes hook alpha is deliberately observe-only. It can be enabled by Hermes
 as a standalone plugin and can run alongside the active Hermes memory provider.
 It does not set `memory.provider`, wrap a provider, replace Mem0/Honcho, or
@@ -614,6 +632,10 @@ historical diagnostics. It is a reporting aid for local alpha dogfood.
 The MF-19 runbook does not add runtime behavior, schema fields, enforcement, or
 provider replacement. It records how to reproduce the alpha path safely with
 harmless test text.
+
+The MF-20 current-version-only lens does not clear historical diagnostics or
+prove that legacy high-risk observations are resolved. It is a scoped report
+view for upgrade and first-run clarity.
 
 ## Adapter Capability Surface
 

@@ -214,29 +214,67 @@ def test_hermes_status_separates_current_and_legacy_observation_versions(tmp_pat
         state_dir=tmp_path,
     )
     recent = recent_hermes_observations(state_dir=tmp_path, limit=10)
+    current_recent = recent_hermes_observations(
+        state_dir=tmp_path,
+        limit=10,
+        current_version_only=True,
+    )
     status = summarize_hermes_observations(state_dir=tmp_path)
     report = generate_hermes_report(
         hermes_home=tmp_path / "hermes",
         state_dir=tmp_path,
         limit=10,
     )
+    current_report = generate_hermes_report(
+        hermes_home=tmp_path / "hermes",
+        state_dir=tmp_path,
+        limit=10,
+        current_version_only=True,
+    )
 
+    assert recent.observation_scope == "all"
     assert recent.observations[0].recorded_integration_version == (
         HERMES_INTEGRATION_VERSION
     )
+    assert recent.matching_observations == 2
+    assert recent.matching_high_risk_observations == 1
+    assert recent.matching_warn_observations == 1
     assert recent.observations[0].level == "warn"
     assert recent.observations[1].recorded_integration_version == "mf-17"
     assert recent.observations[1].level == "high_risk"
+    assert current_recent.observation_scope == "current_version"
+    assert current_recent.total_observations == 2
+    assert current_recent.matching_observations == 1
+    assert current_recent.matching_high_risk_observations == 0
+    assert current_recent.matching_warn_observations == 1
+    assert current_recent.returned_observations == 1
+    assert current_recent.observations[0].recorded_integration_version == (
+        HERMES_INTEGRATION_VERSION
+    )
     assert status.total_observations == 2
     assert status.current_version_observations == 1
     assert status.legacy_version_observations == 1
     assert status.warn_observations == 1
     assert status.high_risk_observations == 1
+    assert report.summary.observation_scope == "all"
     assert report.summary.current_version_observations == 1
     assert report.summary.legacy_version_observations == 1
+    assert report.summary.matching_high_risk_observations == 1
+    assert current_report.summary.observation_scope == "current_version"
+    assert current_report.summary.high_risk_observations == 1
+    assert current_report.summary.matching_high_risk_observations == 0
+    assert current_report.summary.matching_warn_observations == 1
+    assert current_report.observations.observations[0].level == "warn"
+    assert "excludes legacy or unknown-version high-risk rows" in " ".join(
+        current_report.next_steps
+    )
     Draft202012Validator(hermes_status_schema()).validate(status.to_dict())
     Draft202012Validator(hermes_observations_schema()).validate(recent.to_dict())
+    Draft202012Validator(hermes_observations_schema()).validate(
+        current_recent.to_dict()
+    )
     Draft202012Validator(hermes_report_schema()).validate(report.to_dict())
+    Draft202012Validator(hermes_report_schema()).validate(current_report.to_dict())
 
 
 def test_hermes_report_legacy_only_rows_suggest_fresh_session(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -789,7 +827,7 @@ def test_hermes_report_writes_redacted_local_bundle(tmp_path) -> None:  # type: 
     bundle = write_hermes_report_bundle(report, output_dir)
 
     Draft202012Validator(hermes_report_schema()).validate(payload)
-    assert payload["report_version"] == "mf-18"
+    assert payload["report_version"] == "mf-20"
     assert payload["integration_version"] == HERMES_INTEGRATION_VERSION
     assert payload["setup"]["overall_status"] == "ready"
     assert payload["summary"]["high_risk_observations"] == 1

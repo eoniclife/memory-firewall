@@ -89,7 +89,7 @@ def test_finding_schema_uses_frozen_risk_taxonomy() -> None:
 def test_schema_bundle_includes_claim_budget() -> None:
     bundle = schema_bundle()
     budget = claim_budget()
-    assert bundle["schema_version"] == "mf-18"
+    assert bundle["schema_version"] == "mf-20"
     assert bundle["claim_budget"]["allowed"] == list(budget.allowed)
     assert any("broadly scan real stores" in item for item in budget.not_allowed)
     assert any("not a benchmark" in item for item in budget.not_allowed)
@@ -195,8 +195,13 @@ def test_model_outputs_validate_against_exported_schemas() -> None:
         {
             "integration_version": HERMES_INTEGRATION_VERSION,
             "state_dir": "/tmp/memory-firewall-hermes",
+            "observation_scope": "all",
             "limit": 20,
             "total_observations": 0,
+            "matching_observations": 0,
+            "matching_high_risk_observations": 0,
+            "matching_warn_observations": 0,
+            "matching_pass_observations": 0,
             "returned_observations": 0,
             "observations": [],
             "mode": "observe",

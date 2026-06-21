@@ -384,6 +384,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Maximum number of recent observations to show.",
     )
     hermes_observations_parser.add_argument(
+        "--current-version-only",
+        action="store_true",
+        help="Show only rows recorded by the current Hermes adapter version.",
+    )
+    hermes_observations_parser.add_argument(
         "--json",
         action="store_true",
         dest="as_json",
@@ -439,6 +444,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--write-sample",
         action="store_true",
         help="Write one synthetic local observation before generating the report.",
+    )
+    hermes_report_parser.add_argument(
+        "--current-version-only",
+        action="store_true",
+        help="Report only rows recorded by the current Hermes adapter version.",
     )
     hermes_report_parser.add_argument(
         "--open",
@@ -960,16 +970,29 @@ def _run_hermes_status(
 def _run_hermes_observations(
     state_dir: str | None,
     limit: int,
+    current_version_only: bool,
     as_json: bool,
     stdout: TextIO,
 ) -> int:
-    result = recent_hermes_observations(state_dir=state_dir, limit=limit)
+    result = recent_hermes_observations(
+        state_dir=state_dir,
+        limit=limit,
+        current_version_only=current_version_only,
+    )
     if as_json:
         _print_json(result.to_dict(), stdout)
     else:
         print(f"{result.integration_version}: Hermes observations", file=stdout)
         print(f"- state dir: {result.state_dir}", file=stdout)
+        print(f"- observation scope: {result.observation_scope}", file=stdout)
         print(f"- total observations: {result.total_observations}", file=stdout)
+        print(f"- matching observations: {result.matching_observations}", file=stdout)
+        print(
+            f"- matching high-risk: {result.matching_high_risk_observations}",
+            file=stdout,
+        )
+        print(f"- matching warn: {result.matching_warn_observations}", file=stdout)
+        print(f"- matching pass: {result.matching_pass_observations}", file=stdout)
         print(f"- returned: {result.returned_observations}", file=stdout)
         print("- observe-only: true", file=stdout)
         for item in result.observations:
@@ -1052,6 +1075,7 @@ def _run_hermes_report(
     output_dir: str,
     limit: int,
     write_sample: bool,
+    current_version_only: bool,
     open_report: bool,
     as_json: bool,
     stdout: TextIO,
@@ -1061,6 +1085,7 @@ def _run_hermes_report(
         state_dir=state_dir,
         limit=limit,
         write_sample=write_sample,
+        current_version_only=current_version_only,
     )
     bundle = write_hermes_report_bundle(report, output_dir)
     if open_report:
@@ -1073,6 +1098,7 @@ def _run_hermes_report(
         print(f"- html: {bundle.html_path}", file=stdout)
         print(f"- report json: {bundle.report_json_path}", file=stdout)
         print(f"- redacted share: {bundle.redacted_export_path}", file=stdout)
+        print(f"- observation scope: {report.summary.observation_scope}", file=stdout)
         print(f"- observations: {report.summary.total_observations}", file=stdout)
         print(
             f"- current version observations: "
@@ -1084,6 +1110,15 @@ def _run_hermes_report(
             f"{report.summary.legacy_version_observations}",
             file=stdout,
         )
+        print(
+            f"- matching observations: {report.summary.matching_observations}",
+            file=stdout,
+        )
+        print(
+            f"- matching high-risk: "
+            f"{report.summary.matching_high_risk_observations}",
+            file=stdout,
+        )
         print(f"- high-risk: {report.summary.high_risk_observations}", file=stdout)
         print(f"- returned rows: {report.summary.returned_observations}", file=stdout)
         print("- observe-only: true", file=stdout)
@@ -1093,7 +1128,8 @@ def _run_hermes_report(
                 print(f"  - {step}", file=stdout)
     if (
         report.setup.overall_status == "ready"
-        and report.summary.high_risk_observations == 0
+        and report.summary.matching_observations > 0
+        and report.summary.matching_high_risk_observations == 0
     ):
         return 0
     return 1
@@ -1252,6 +1288,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_hermes_observations(
                 state_dir,
                 int(args.limit),
+                bool(args.current_version_only),
                 bool(args.as_json),
                 sys.stdout,
             )
@@ -1275,6 +1312,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 str(args.out),
                 int(args.limit),
                 bool(args.write_sample),
+                bool(args.current_version_only),
                 bool(args.open_report),
                 bool(args.as_json),
                 sys.stdout,

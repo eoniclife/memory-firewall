@@ -33,8 +33,13 @@ from .models import (
 from .scan import ScanEventLevel, ScanEventResult, scan_event
 from .version import __version__
 
-HERMES_INTEGRATION_VERSION = "mf-18"
-HERMES_REPORT_VERSION = "mf-18"
+HERMES_INTEGRATION_VERSION = "mf-20"
+HERMES_REPORT_VERSION = "mf-20"
+HERMES_OBSERVATION_SCOPE_ALL = "all"
+HERMES_OBSERVATION_SCOPE_CURRENT_VERSION = "current_version"
+_HERMES_OBSERVATION_SCOPES = frozenset(
+    (HERMES_OBSERVATION_SCOPE_ALL, HERMES_OBSERVATION_SCOPE_CURRENT_VERSION)
+)
 HERMES_EVENTS_FILENAME = "events.jsonl"
 HERMES_OBSERVATIONS_FILENAME = "observations.jsonl"
 HERMES_REPORT_JSON_FILENAME = "report.json"
@@ -590,8 +595,13 @@ class HermesObservationList:
 
     integration_version: str
     state_dir: str
+    observation_scope: str
     limit: int
     total_observations: int
+    matching_observations: int
+    matching_high_risk_observations: int
+    matching_warn_observations: int
+    matching_pass_observations: int
     returned_observations: int
     observations: tuple[HermesObservationSummary, ...]
 
@@ -602,23 +612,46 @@ class HermesObservationList:
             )
         if not self.state_dir:
             raise ValueError("state_dir must not be empty")
+        if self.observation_scope not in _HERMES_OBSERVATION_SCOPES:
+            raise ValueError("observation_scope must be all or current_version")
         if self.limit < 1:
             raise ValueError("limit must be positive")
-        for field_name in ("total_observations", "returned_observations"):
+        for field_name in (
+            "total_observations",
+            "matching_observations",
+            "matching_high_risk_observations",
+            "matching_warn_observations",
+            "matching_pass_observations",
+            "returned_observations",
+        ):
             value = getattr(self, field_name)
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 raise ValueError(f"{field_name} must be a non-negative integer")
         if self.returned_observations != len(self.observations):
             raise ValueError("returned_observations must equal observations length")
-        if self.returned_observations > self.total_observations:
-            raise ValueError("returned_observations cannot exceed total_observations")
+        if self.matching_observations > self.total_observations:
+            raise ValueError("matching_observations cannot exceed total_observations")
+        if self.returned_observations > self.matching_observations:
+            raise ValueError("returned_observations cannot exceed matching_observations")
+        if (
+            self.matching_high_risk_observations
+            + self.matching_warn_observations
+            + self.matching_pass_observations
+            > self.matching_observations
+        ):
+            raise ValueError("matching level counts cannot exceed matching_observations")
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "integration_version": self.integration_version,
             "state_dir": self.state_dir,
+            "observation_scope": self.observation_scope,
             "limit": self.limit,
             "total_observations": self.total_observations,
+            "matching_observations": self.matching_observations,
+            "matching_high_risk_observations": self.matching_high_risk_observations,
+            "matching_warn_observations": self.matching_warn_observations,
+            "matching_pass_observations": self.matching_pass_observations,
             "returned_observations": self.returned_observations,
             "observations": [item.to_dict() for item in self.observations],
             "mode": HERMES_DEFAULT_MODE,
@@ -764,6 +797,7 @@ class HermesCheckupResult:
 class HermesReportSummary:
     """Compact counters for a local Hermes diagnostics report."""
 
+    observation_scope: str
     total_observations: int
     current_version_observations: int
     legacy_version_observations: int
@@ -771,12 +805,18 @@ class HermesReportSummary:
     warn_observations: int
     high_risk_observations: int
     blocked_by_firewall: int
+    matching_observations: int
+    matching_high_risk_observations: int
+    matching_warn_observations: int
+    matching_pass_observations: int
     returned_observations: int
     report_contains_raw_content: bool = False
     hosted_dashboard: bool = False
     production_enforcement: bool = False
 
     def __post_init__(self) -> None:
+        if self.observation_scope not in _HERMES_OBSERVATION_SCOPES:
+            raise ValueError("observation_scope must be all or current_version")
         for field_name in (
             "total_observations",
             "current_version_observations",
@@ -785,6 +825,10 @@ class HermesReportSummary:
             "warn_observations",
             "high_risk_observations",
             "blocked_by_firewall",
+            "matching_observations",
+            "matching_high_risk_observations",
+            "matching_warn_observations",
+            "matching_pass_observations",
             "returned_observations",
         ):
             value = getattr(self, field_name)
@@ -798,6 +842,17 @@ class HermesReportSummary:
                 "current_version_observations plus legacy_version_observations "
                 "must equal total_observations"
             )
+        if self.matching_observations > self.total_observations:
+            raise ValueError("matching_observations cannot exceed total_observations")
+        if self.returned_observations > self.matching_observations:
+            raise ValueError("returned_observations cannot exceed matching_observations")
+        if (
+            self.matching_high_risk_observations
+            + self.matching_warn_observations
+            + self.matching_pass_observations
+            > self.matching_observations
+        ):
+            raise ValueError("matching level counts cannot exceed matching_observations")
         for field_name in (
             "report_contains_raw_content",
             "hosted_dashboard",
@@ -809,6 +864,7 @@ class HermesReportSummary:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "observation_scope": self.observation_scope,
             "total_observations": self.total_observations,
             "current_version_observations": self.current_version_observations,
             "legacy_version_observations": self.legacy_version_observations,
@@ -816,6 +872,10 @@ class HermesReportSummary:
             "warn_observations": self.warn_observations,
             "high_risk_observations": self.high_risk_observations,
             "blocked_by_firewall": self.blocked_by_firewall,
+            "matching_observations": self.matching_observations,
+            "matching_high_risk_observations": self.matching_high_risk_observations,
+            "matching_warn_observations": self.matching_warn_observations,
+            "matching_pass_observations": self.matching_pass_observations,
             "returned_observations": self.returned_observations,
             "report_contains_raw_content": self.report_contains_raw_content,
             "hosted_dashboard": self.hosted_dashboard,
@@ -1597,6 +1657,7 @@ def recent_hermes_observations(
     *,
     state_dir: str | Path | None = None,
     limit: int = 20,
+    current_version_only: bool = False,
 ) -> HermesObservationList:
     """Return newest-first redacted summaries over local Hermes observations."""
 
@@ -1608,12 +1669,33 @@ def recent_hermes_observations(
         _hermes_observation_summary_from_row(row, row_number=index)
         for index, row in enumerate(rows, start=1)
     )
-    recent = tuple(reversed(summaries[-limit:]))
+    if current_version_only:
+        matching = tuple(
+            summary
+            for summary in summaries
+            if summary.recorded_integration_version == HERMES_INTEGRATION_VERSION
+        )
+        observation_scope = HERMES_OBSERVATION_SCOPE_CURRENT_VERSION
+    else:
+        matching = summaries
+        observation_scope = HERMES_OBSERVATION_SCOPE_ALL
+    recent = tuple(reversed(matching[-limit:]))
     return HermesObservationList(
         integration_version=HERMES_INTEGRATION_VERSION,
         state_dir=str(output_dir),
+        observation_scope=observation_scope,
         limit=limit,
         total_observations=len(rows),
+        matching_observations=len(matching),
+        matching_high_risk_observations=sum(
+            1 for item in matching if item.level == ScanEventLevel.HIGH_RISK.value
+        ),
+        matching_warn_observations=sum(
+            1 for item in matching if item.level == ScanEventLevel.WARN.value
+        ),
+        matching_pass_observations=sum(
+            1 for item in matching if item.level == ScanEventLevel.PASS.value
+        ),
         returned_observations=len(recent),
         observations=recent,
     )
@@ -1779,6 +1861,7 @@ def check_hermes_setup(
     state_dir: str | Path | None = None,
     limit: int = 5,
     write_sample: bool = False,
+    current_version_only: bool = False,
 ) -> HermesCheckupResult:
     """Return a self-verifying local checkup for the Hermes adapter."""
 
@@ -1823,7 +1906,11 @@ def check_hermes_setup(
     observations_file_exists = observations_path.is_file()
     observations_file_mode = _octal_mode(observations_path)
     status = summarize_hermes_observations(state_dir=output_dir)
-    recent = recent_hermes_observations(state_dir=output_dir, limit=limit)
+    recent = recent_hermes_observations(
+        state_dir=output_dir,
+        limit=limit,
+        current_version_only=current_version_only,
+    )
 
     checks: list[HermesCheckupCheck] = []
     next_steps: list[str] = []
@@ -2011,6 +2098,7 @@ def _count_observation_fields(
 def _hermes_report_next_steps(
     *,
     checkup: HermesCheckupResult,
+    observations: HermesObservationList,
     limit: int,
 ) -> tuple[str, ...]:
     steps = list(checkup.next_steps)
@@ -2027,7 +2115,26 @@ def _hermes_report_next_steps(
                 "after this upgrade before treating legacy diagnostics as "
                 "current adapter behavior."
             )
-        if checkup.status.high_risk_observations > 0:
+        if observations.observation_scope == HERMES_OBSERVATION_SCOPE_CURRENT_VERSION:
+            if observations.matching_high_risk_observations > 0:
+                steps.append(
+                    "Inspect current-version high-risk local rows with "
+                    "`memory-firewall hermes observations --current-version-only "
+                    f"--limit {limit}` and decide whether the remembered fact "
+                    "should be trusted."
+                )
+            elif checkup.status.high_risk_observations > 0:
+                steps.append(
+                    "This current-version report excludes legacy or unknown-version "
+                    "high-risk rows. Run an unfiltered Hermes report before deciding "
+                    "whether historical diagnostics are resolved."
+                )
+            elif checkup.overall_status == "ready":
+                steps.append(
+                    "Keep the observe-only adapter enabled and reopen this "
+                    "current-version report after meaningful agent memory activity."
+                )
+        elif checkup.status.high_risk_observations > 0:
             steps.append(
                 "Inspect high-risk local rows with "
                 f"`memory-firewall hermes observations --limit {limit}` and decide "
@@ -2047,6 +2154,7 @@ def generate_hermes_report(
     state_dir: str | Path | None = None,
     limit: int = 50,
     write_sample: bool = False,
+    current_version_only: bool = False,
 ) -> HermesReportResult:
     """Generate a local redacted diagnostics report over Hermes observations."""
 
@@ -2057,6 +2165,7 @@ def generate_hermes_report(
         state_dir=state_dir,
         limit=limit,
         write_sample=write_sample,
+        current_version_only=current_version_only,
     )
     observations = checkup.recent_observations
     setup = HermesSetupSummary(
@@ -2071,6 +2180,7 @@ def generate_hermes_report(
         sample_written=checkup.sample_written,
     )
     summary = HermesReportSummary(
+        observation_scope=observations.observation_scope,
         total_observations=checkup.status.total_observations,
         current_version_observations=checkup.status.current_version_observations,
         legacy_version_observations=checkup.status.legacy_version_observations,
@@ -2078,6 +2188,10 @@ def generate_hermes_report(
         warn_observations=checkup.status.warn_observations,
         high_risk_observations=checkup.status.high_risk_observations,
         blocked_by_firewall=checkup.status.blocked_by_firewall,
+        matching_observations=observations.matching_observations,
+        matching_high_risk_observations=observations.matching_high_risk_observations,
+        matching_warn_observations=observations.matching_warn_observations,
+        matching_pass_observations=observations.matching_pass_observations,
         returned_observations=observations.returned_observations,
     )
     return HermesReportResult(
@@ -2101,12 +2215,17 @@ def generate_hermes_report(
             observations.observations,
             "detector_names",
         ),
-        next_steps=_hermes_report_next_steps(checkup=checkup, limit=limit),
+        next_steps=_hermes_report_next_steps(
+            checkup=checkup,
+            observations=observations,
+            limit=limit,
+        ),
         limitations=(
             "Local static Hermes diagnostics report only.",
             "Observation rows are redacted handles; raw and proposed memory content are not included.",
             "The Hermes adapter remains observe-only and does not suppress native memory writes.",
             "High-risk findings are deterministic integrity signals, not proof of objective truth or adversarial intent.",
+            "Current-version-only reports are an explicit lens and do not delete or clear legacy diagnostics.",
             "The redacted share export removes local filesystem paths by default.",
         ),
     )
