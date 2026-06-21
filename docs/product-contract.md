@@ -339,9 +339,10 @@ do not connect to a live framework or memory store. The scan/watch layer
 composes existing detector, policy, and state-analysis surfaces. It does not
 create a separate judgment path.
 
-`HIGH-RISK` includes detector dispositions that require review/quarantine and
-state-analysis outcomes that require reducer review, including higher-authority
-contradictions. Such events are not clean pass events.
+`HIGH-RISK` includes detector dispositions that require review/quarantine,
+state-analysis contradictions, and blocked low-authority contradictions. Under
+MF-17, provenance-only untrusted writes that require reducer review are WARN
+signals rather than HIGH-RISK alerts. Such events are not clean pass events.
 
 Finite scans keep only bounded scan-local assertion context needed for
 contradiction analysis. Only clean, review-eligible events can seed that
