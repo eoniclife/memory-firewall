@@ -14,12 +14,12 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository's runtime/schema surface is MF-18: a first observe-only Hermes
+This repository's runtime/schema surface is MF-20: a first observe-only Hermes
 hook alpha, Hermes user-plugin shim installer, redacted recent-observations
 readout, local Hermes checkup/report, calibrated signal levels from real Hermes
 dogfood, and version-aware diagnostics over the existing Memory Firewall
-scan/detector/report surfaces. MF-19 is a documentation and dogfood runbook pass
-over that MF-18 surface.
+scan/detector/report surfaces. MF-20 adds an explicit current-version-only
+diagnostics lens for upgrade and first-run clarity.
 
 Implemented now:
 
@@ -52,6 +52,8 @@ Implemented now:
   instruction-like content, secrets, and contradictions remain HIGH-RISK;
 - current-vs-legacy Hermes observation counts and recorded adapter version
   labels in redacted diagnostics;
+- current-version-only Hermes observations and report filters that preserve
+  all-history counts while narrowing the returned row lens;
 - adapter capability report model and schema;
 - a built-in fake adapter conformance probe;
 - machine-readable event/finding/detector/state-analysis/scan/review/demo/proxy/report/Hermes
@@ -113,14 +115,16 @@ uv run --python 3.12 --extra dev memory-firewall proxy reference --mode enforce 
 uv run --python 3.12 --extra dev memory-firewall report demo --out ./memory-integrity-report --json
 uv run --python 3.12 --extra dev memory-firewall hermes checkup --json
 uv run --python 3.12 --extra dev memory-firewall hermes report --out ./hermes-memory-report --json
+uv run --python 3.12 --extra dev memory-firewall hermes report --current-version-only --out ./hermes-memory-report-current --json
 uv run --python 3.12 --extra dev memory-firewall hermes status --json
 uv run --python 3.12 --extra dev memory-firewall hermes observations --limit 20 --json
+uv run --python 3.12 --extra dev memory-firewall hermes observations --current-version-only --limit 20 --json
 uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 ```
 
 ## Hermes Hook Alpha
 
-The MF-18 Hermes integration is observe-only. Install the package into the same
+The MF-20 Hermes integration is observe-only. Install the package into the same
 Python environment that runs Hermes, install the Hermes user-plugin shim, enable
 the `memory-firewall` plugin in Hermes, then start a fresh Hermes session.
 
@@ -132,6 +136,7 @@ memory-firewall hermes checkup --json
 memory-firewall hermes report --out ./hermes-memory-report --open
 memory-firewall hermes status --json
 memory-firewall hermes observations --limit 20 --json
+memory-firewall hermes observations --current-version-only --limit 20 --json
 ```
 
 For first-run validation without waiting for a real agent memory write, run:
@@ -158,7 +163,9 @@ memory-firewall hermes checkup --json
 hermes -z "Use the built-in memory tool to add this harmless test memory exactly once: MF current-version dogfood marker: Memory Firewall should show a current-version WARN row. After using the memory tool, reply with only: done."
 memory-firewall hermes status --json
 memory-firewall hermes observations --limit 5 --json
+memory-firewall hermes observations --current-version-only --limit 5 --json
 memory-firewall hermes report --out ./hermes-memory-report --open
+memory-firewall hermes report --current-version-only --out ./hermes-memory-report-current --open
 ```
 
 In `status` and `report`, `current_version_observations` should increase after
@@ -167,11 +174,19 @@ the fresh memory write. In `observations`, the newest row should have
 A normal provenance-only memory marker should be a WARN/review row. If old
 HIGH-RISK rows remain, `hermes status` returns `1` whenever
 `high_risk_observations` is non-zero, and `hermes report` returns `1` when setup
-is not ready or high-risk rows remain. `hermes observations --limit N` returns
-`1` only when the returned newest-first window includes a high-risk row. Check
-`overall_status`, `high_risk_observations`, and the returned rows before
-interpreting exit code `1`; it may reflect historical diagnostics, not a blocked
-or reclassified current-version marker.
+is not ready, no rows match the selected report scope, or high-risk rows remain
+in the selected report scope.
+`hermes observations --limit N` returns `1` only when the returned newest-first
+window includes a high-risk row. Use `--current-version-only` on `observations`
+or `report` when you need to inspect the rows recorded by the currently
+installed adapter after an upgrade. Filtered outputs still include all-history
+counts such as `total_observations`, `high_risk_observations`,
+`warn_observations`, and `pass_observations`, plus `matching_*` counts for the
+selected scope. Check `overall_status`,
+`observation_scope`, `matching_high_risk_observations`,
+`high_risk_observations`, and the returned rows before interpreting exit code
+`1`; it may reflect historical diagnostics, not a blocked or reclassified
+current-version marker.
 
 By default the plugin records only high-signal memory write tool attempts.
 Diagnostics are local JSONL files under `~/.hermes/memory-firewall/`, unless
@@ -186,17 +201,20 @@ observations for implicit memory-provider writes.
 the local Hermes diagnostics: recorded time, hook/tool, redacted target
 namespace, local row handle, level, disposition, finding count, contradiction
 count, risk categories, detector names, and the adapter version that recorded
-each row. It does not print raw candidate memory text. Provenance-only agent
-memory writes are WARN signals by default; hazardous content patterns and state
-contradictions remain HIGH-RISK.
+each row. Add `--current-version-only` to return only rows recorded by the
+currently installed adapter version. It does not print raw candidate memory text.
+Provenance-only agent memory writes are WARN signals by default; hazardous
+content patterns and state contradictions remain HIGH-RISK.
 
 `memory-firewall hermes report --out ./hermes-memory-report --open` writes a
 local `report.json`, `index.html`, and redacted `redacted-share.json` over the
 same Hermes diagnostics. The local report includes setup status, observation
 counts, current-vs-legacy adapter-version counts, redacted row handles,
-detector/risk counts, and next steps. The
-redacted share export removes local filesystem paths and does not include raw
-candidate memory text.
+detector/risk counts, and next steps. Add `--current-version-only` to generate
+a filtered report over rows recorded by the current adapter version; the report
+still discloses all-history totals and notes that legacy diagnostics were
+excluded from the returned row lens. The redacted share export removes local
+filesystem paths and does not include raw candidate memory text.
 
 ## Product Boundary
 
@@ -297,6 +315,12 @@ the adapter version that recorded each row, and status/checkup/report summaries
 separate current-version observations from legacy or unknown-version rows. This
 helps alpha users distinguish today's calibrated behavior from older dogfood
 history without rewriting historical diagnostics.
+
+MF-20 adds an explicit current-version-only diagnostics lens for Hermes
+observations and reports. The filtered commands preserve all-history totals while
+showing `matching_*` counts and returned rows for the selected scope, so upgrade
+checks can focus on the newly installed adapter without deleting or hiding legacy
+diagnostics.
 
 ## Relationship To Agent Memory Contracts
 

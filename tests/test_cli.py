@@ -3,11 +3,14 @@ import sys
 from io import StringIO
 
 from memory_firewall import (
+    HERMES_INTEGRATION_VERSION,
     MemoryEvent,
     MemoryStateAssertion,
     SourceAuthority,
     SourceType,
     StateAssertionStatus,
+    memory_events_from_hermes_tool_call,
+    record_hermes_events,
 )
 from memory_firewall.cli import main
 
@@ -17,7 +20,7 @@ def test_schema_bundle_command_prints_json(capsys) -> None:  # type: ignore[no-u
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload["package"] == "memory-firewall"
-    assert payload["schema_version"] == "mf-18"
+    assert payload["schema_version"] == "mf-20"
     assert payload["hermes_checkup_schema"]["title"] == "HermesCheckup"
     assert payload["hermes_report_schema"]["title"] == "HermesReport"
     assert payload["hermes_status_schema"]["title"] == "HermesStatus"
@@ -280,6 +283,201 @@ def test_report_demo_json_command_writes_local_bundle(tmp_path, capsys) -> None:
         "html": "index.html",
         "redacted_export": "redacted-share.json",
     }
+
+
+def test_hermes_current_version_only_cli_filters_legacy_high_risk(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "hermes"
+    state_dir = tmp_path / "state"
+    output_dir = tmp_path / "hermes-report"
+    state_dir.mkdir()
+    (state_dir / "observations.jsonl").write_text(
+        json.dumps(
+            {
+                "integration_version": "mf-17",
+                "recorded_at": "2026-06-20T14:59:00Z",
+                "hook_name": "post_tool_call",
+                "tool_name": "memory",
+                "mode": "observe",
+                "blocked_by_firewall": False,
+                "event": {
+                    "operation": "upsert",
+                    "source_authority": "untrusted",
+                    "target_namespace": "hermes:memory:profile",
+                },
+                "scan": {
+                    "level": "high_risk",
+                    "highest_disposition": "review",
+                    "finding_count": 1,
+                    "contradiction_count": 0,
+                    "detector_result": {
+                        "findings": [
+                            {
+                                "risk_category": "provenance_gap",
+                                "detector_name": "provenance-gap-v1",
+                            }
+                        ]
+                    },
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    current_events = memory_events_from_hermes_tool_call(
+        "memory",
+        {
+            "action": "add",
+            "target": "memory",
+            "content": "Remember that the MF-20 current-version filter worked.",
+        },
+        timestamp="2026-06-20T15:00:00Z",
+        session_id="session-1",
+        tool_call_id="tool-1",
+        turn_id="turn-1",
+    )
+    record_hermes_events(
+        current_events,
+        hook_name="post_tool_call",
+        tool_name="memory",
+        state_dir=state_dir,
+    )
+
+    assert (
+        main(
+            [
+                "hermes",
+                "observations",
+                "--state-dir",
+                str(state_dir),
+                "--current-version-only",
+                "--limit",
+                "20",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    observations_payload = json.loads(captured.out)
+
+    assert observations_payload["observation_scope"] == "current_version"
+    assert observations_payload["total_observations"] == 2
+    assert observations_payload["high_risk_observations"] == 1
+    assert observations_payload["warn_observations"] == 1
+    assert observations_payload["matching_observations"] == 1
+    assert observations_payload["matching_high_risk_observations"] == 0
+    assert observations_payload["matching_warn_observations"] == 1
+    assert observations_payload["returned_observations"] == 1
+    assert observations_payload["observations"][0][
+        "recorded_integration_version"
+    ] == HERMES_INTEGRATION_VERSION
+
+    assert (
+        main(["hermes", "install-plugin", "--hermes-home", str(home), "--json"])
+        == 0
+    )
+    capsys.readouterr()
+    (home / "config.yaml").write_text(
+        "plugins:\n  enabled:\n  - memory-firewall\n",
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "hermes",
+                "report",
+                "--hermes-home",
+                str(home),
+                "--state-dir",
+                str(state_dir),
+                "--out",
+                str(output_dir),
+                "--current-version-only",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    report_payload = json.loads(captured.out)
+    report_json = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
+
+    assert report_payload["summary"]["observation_scope"] == "current_version"
+    assert report_payload["summary"]["high_risk_observations"] == 1
+    assert report_payload["summary"]["matching_high_risk_observations"] == 0
+    assert report_payload["summary"]["matching_warn_observations"] == 1
+    assert report_json["summary"]["high_risk_observations"] == 1
+    assert report_json["summary"]["matching_high_risk_observations"] == 0
+    assert "MF-20 current-version filter" not in (
+        output_dir / "redacted-share.json"
+    ).read_text(encoding="utf-8")
+
+
+def test_hermes_current_version_report_with_no_matching_rows_exits_attention(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "hermes"
+    state_dir = tmp_path / "state"
+    output_dir = tmp_path / "hermes-report"
+    state_dir.mkdir()
+    (state_dir / "observations.jsonl").write_text(
+        json.dumps(
+            {
+                "integration_version": "mf-17",
+                "recorded_at": "2026-06-20T14:59:00Z",
+                "hook_name": "post_tool_call",
+                "tool_name": "memory",
+                "mode": "observe",
+                "blocked_by_firewall": False,
+                "event": {
+                    "operation": "upsert",
+                    "source_authority": "untrusted",
+                    "target_namespace": "hermes:memory:profile",
+                },
+                "scan": {
+                    "level": "high_risk",
+                    "highest_disposition": "review",
+                    "finding_count": 1,
+                    "contradiction_count": 0,
+                    "detector_result": {"findings": []},
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert (
+        main(["hermes", "install-plugin", "--hermes-home", str(home), "--json"])
+        == 0
+    )
+    capsys.readouterr()
+    (home / "config.yaml").write_text(
+        "plugins:\n  enabled:\n  - memory-firewall\n",
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "hermes",
+                "report",
+                "--hermes-home",
+                str(home),
+                "--state-dir",
+                str(state_dir),
+                "--out",
+                str(output_dir),
+                "--current-version-only",
+                "--json",
+            ]
+        )
+        == 1
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert payload["summary"]["observation_scope"] == "current_version"
+    assert payload["summary"]["matching_observations"] == 0
+    assert payload["summary"]["high_risk_observations"] == 1
 
 
 def test_risks_json_command(capsys) -> None:  # type: ignore[no-untyped-def]
