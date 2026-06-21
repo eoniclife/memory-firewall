@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .adapter_bridge import ADAPTER_BRIDGE_VERSION
+from .adapter_bridge import ADAPTER_BRIDGE_REPORT_VERSION, ADAPTER_BRIDGE_VERSION
 from .adapters import AdapterCapability
 from .analysis import ANALYSIS_VERSION, TrustedStateAction
 from .claim_budget import claim_budget
@@ -46,7 +46,7 @@ from .scan import SCAN_ISSUE_ID_PREFIX, SCAN_VERSION, ScanEventLevel
 from .taxonomy import risk_taxonomy
 from .version import __version__
 
-SCHEMA_VERSION = "mf-21"
+SCHEMA_VERSION = "mf-22"
 
 
 def _enum_values(enum_type: type[Any]) -> list[str]:
@@ -1767,7 +1767,7 @@ def adapter_bridge_observe_result_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-observe-result.mf-21.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-observe-result.mf-22.json",
         "title": "AdapterBridgeObserveResult",
         "type": "object",
         "additionalProperties": False,
@@ -1795,7 +1795,7 @@ def adapter_bridge_observations_schema() -> dict[str, Any]:
 
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-observations.mf-21.json",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-observations.mf-22.json",
         "title": "AdapterBridgeObservations",
         "type": "object",
         "additionalProperties": False,
@@ -1825,6 +1825,122 @@ def adapter_bridge_observations_schema() -> dict[str, Any]:
             "observations": {
                 "type": "array",
                 "items": _adapter_bridge_observation_summary_schema(),
+            },
+            "observe_only": {"const": True},
+            "production_enforcement": {"const": False},
+            "raw_content_included": {"const": False},
+        },
+    }
+
+
+def _adapter_bridge_report_setup_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "overall_status",
+            "state_dir_exists",
+            "events_file_exists",
+            "observations_file_exists",
+            "state_dir_mode",
+            "events_file_mode",
+            "observations_file_mode",
+        ],
+        "properties": {
+            "overall_status": {
+                "type": "string",
+                "enum": ["ready", "empty", "attention"],
+            },
+            "state_dir_exists": {"type": "boolean"},
+            "events_file_exists": {"type": "boolean"},
+            "observations_file_exists": {"type": "boolean"},
+            "state_dir_mode": _nullable_octal_mode_schema(),
+            "events_file_mode": _nullable_octal_mode_schema(),
+            "observations_file_mode": _nullable_octal_mode_schema(),
+        },
+    }
+
+
+def _adapter_bridge_report_summary_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "total_observations",
+            "pass_observations",
+            "warn_observations",
+            "high_risk_observations",
+            "returned_observations",
+            "report_contains_raw_content",
+            "hosted_dashboard",
+            "production_enforcement",
+        ],
+        "properties": {
+            "total_observations": {"type": "integer", "minimum": 0},
+            "pass_observations": {"type": "integer", "minimum": 0},
+            "warn_observations": {"type": "integer", "minimum": 0},
+            "high_risk_observations": {"type": "integer", "minimum": 0},
+            "returned_observations": {"type": "integer", "minimum": 0},
+            "report_contains_raw_content": {"const": False},
+            "hosted_dashboard": {"const": False},
+            "production_enforcement": {"const": False},
+        },
+    }
+
+
+def adapter_bridge_report_schema() -> dict[str, Any]:
+    """Return the generic adapter local diagnostics report JSON schema."""
+
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://github.com/eoniclife/memory-firewall/schemas/adapter-report.mf-22.json",
+        "title": "AdapterBridgeReport",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "report_version",
+            "bridge_version",
+            "package_version",
+            "title",
+            "generated_at",
+            "state_dir",
+            "setup",
+            "summary",
+            "observations",
+            "level_counts",
+            "risk_category_counts",
+            "detector_counts",
+            "next_steps",
+            "limitations",
+            "observe_only",
+            "production_enforcement",
+            "raw_content_included",
+        ],
+        "properties": {
+            "report_version": {"const": ADAPTER_BRIDGE_REPORT_VERSION},
+            "bridge_version": {"const": ADAPTER_BRIDGE_VERSION},
+            "package_version": {"type": "string", "minLength": 1},
+            "title": {"type": "string", "minLength": 1},
+            "generated_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": RFC3339_TIMESTAMP_PATTERN,
+            },
+            "state_dir": {"type": "string", "minLength": 1},
+            "setup": _adapter_bridge_report_setup_schema(),
+            "summary": _adapter_bridge_report_summary_schema(),
+            "observations": adapter_bridge_observations_schema(),
+            "level_counts": _string_int_count_map_schema(),
+            "risk_category_counts": _string_int_count_map_schema(),
+            "detector_counts": _string_int_count_map_schema(),
+            "next_steps": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+            },
+            "limitations": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1},
             },
             "observe_only": {"const": True},
             "production_enforcement": {"const": False},
@@ -2115,6 +2231,7 @@ def schema_bundle() -> dict[str, Any]:
         "redacted_report_export_schema": redacted_report_export_schema(),
         "adapter_bridge_observe_result_schema": adapter_bridge_observe_result_schema(),
         "adapter_bridge_observations_schema": adapter_bridge_observations_schema(),
+        "adapter_bridge_report_schema": adapter_bridge_report_schema(),
         "hermes_checkup_schema": hermes_checkup_schema(),
         "hermes_report_schema": hermes_report_schema(),
         "hermes_status_schema": hermes_status_schema(),

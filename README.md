@@ -14,13 +14,14 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 ## Status
 
-This repository's runtime/schema surface is MF-21: a generic local adapter
-bridge over one supplied memory candidate, plus the first observe-only Hermes
-hook alpha, Hermes user-plugin shim installer, redacted recent-observations
-readout, local Hermes checkup/report, calibrated signal levels from real Hermes
-dogfood, and version-aware diagnostics over the existing Memory Firewall
-scan/detector/report surfaces. MF-21 adds a small observe-only bridge so custom
-agents can submit one candidate without handcrafting full `MemoryEvent` JSON.
+This repository's runtime/schema surface is MF-22: a generic local adapter
+report over one supplied-candidate diagnostics stream, plus the first
+observe-only Hermes hook alpha, Hermes user-plugin shim installer, redacted
+recent-observations readout, local Hermes checkup/report, calibrated signal
+levels from real Hermes dogfood, and version-aware diagnostics over the existing
+Memory Firewall scan/detector/report surfaces. MF-22 makes the generic bridge
+more useful by writing a local `report.json`, `index.html`, and redacted
+`redacted-share.json` over adapter observations.
 
 Implemented now:
 
@@ -59,6 +60,7 @@ Implemented now:
   `MemoryEvent`, scans it, persists local private diagnostics, and returns a
   redacted result;
 - redacted generic adapter observations readout;
+- local redacted `memory-firewall adapter report`;
 - adapter capability report model and schema;
 - a built-in fake adapter conformance probe;
 - machine-readable event/finding/detector/state-analysis/scan/review/demo/proxy/report/adapter/Hermes
@@ -100,6 +102,7 @@ uv run --python 3.12 --extra dev memory-firewall schema report-result
 uv run --python 3.12 --extra dev memory-firewall schema redacted-report-export
 uv run --python 3.12 --extra dev memory-firewall schema adapter-observe-result
 uv run --python 3.12 --extra dev memory-firewall schema adapter-observations
+uv run --python 3.12 --extra dev memory-firewall schema adapter-report
 uv run --python 3.12 --extra dev memory-firewall schema hermes-checkup
 uv run --python 3.12 --extra dev memory-firewall schema hermes-report
 uv run --python 3.12 --extra dev memory-firewall schema hermes-status
@@ -123,6 +126,7 @@ uv run --python 3.12 --extra dev memory-firewall proxy reference --mode enforce 
 uv run --python 3.12 --extra dev memory-firewall report demo --out ./memory-integrity-report --json
 uv run --python 3.12 --extra dev memory-firewall adapter observe-memory --content "Remember that the user prefers local tools." --target profile --source-authority untrusted --json
 uv run --python 3.12 --extra dev memory-firewall adapter observations --limit 20 --json
+uv run --python 3.12 --extra dev memory-firewall adapter report --out ./adapter-memory-report --json
 uv run --python 3.12 --extra dev memory-firewall hermes checkup --json
 uv run --python 3.12 --extra dev memory-firewall hermes report --out ./hermes-memory-report --json
 uv run --python 3.12 --extra dev memory-firewall hermes report --current-version-only --out ./hermes-memory-report-current --json
@@ -134,8 +138,9 @@ uv run --python 3.12 --extra dev memory-firewall conformance demo --json
 
 ## Generic Adapter Bridge
 
-Use the MF-21 bridge when an agent or script has one memory candidate and wants
-Memory Firewall diagnostics without building full `MemoryEvent` JSON by hand.
+Use the MF-22 bridge and report when an agent or script has one memory candidate
+and wants Memory Firewall diagnostics without building full `MemoryEvent` JSON
+by hand.
 
 ```bash
 memory-firewall adapter observe-memory \
@@ -145,15 +150,19 @@ memory-firewall adapter observe-memory \
   --json
 
 memory-firewall adapter observations --limit 20 --json
+memory-firewall adapter report --out ./adapter-memory-report --open
 ```
 
 The bridge writes local private diagnostics under
 `~/.memory-firewall/adapter` by default. Those local JSONL files may contain raw
-candidate memory text. The command output is a redacted summary and does not
-include raw/proposed content or raw-derived event ids. The bridge is
-observe-only: it does not scan existing stores, replace memory providers,
-suppress writes, approve memories, or claim direct support for Mem0, Honcho,
-GBrain, LangChain, Letta, Zep, or vector databases.
+candidate memory text. The command output and report rows are redacted summaries
+and do not include raw/proposed content or raw-derived event ids.
+`adapter report` writes local `report.json`, `index.html`, and
+`redacted-share.json`; the redacted share export removes local filesystem paths
+and remains the safer artifact to share. The bridge is observe-only: it does not
+scan existing stores, replace memory providers, suppress writes, approve
+memories, or claim direct support for Mem0, Honcho, GBrain, LangChain, Letta,
+Zep, or vector databases.
 
 ## Hermes Hook Alpha
 
@@ -363,6 +372,15 @@ private diagnostics under `~/.memory-firewall/adapter` by default, and returns a
 redacted observation summary. It remains observe-only and does not scan existing
 stores, replace a provider, suppress writes, or claim framework-specific
 support for Mem0, Honcho, GBrain, LangChain, Letta, Zep, or vector databases.
+
+MF-22 adds `memory-firewall adapter report --out <dir> --json|--open`. The
+command writes a local redacted report over the same generic adapter diagnostics:
+`report.json`, `index.html`, and `redacted-share.json`. The report includes
+setup status, observation counts, level/risk/detector summaries, recent
+redacted rows, next steps, and limitations. The share export redacts local paths
+and does not include raw candidate memory text or raw event ids. It is a local
+alpha readout, not a hosted dashboard, telemetry service, provider wrapper,
+approval ledger, or scanner for existing memory stores.
 
 ## Relationship To Agent Memory Contracts
 
