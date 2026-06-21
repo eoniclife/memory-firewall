@@ -159,6 +159,136 @@ def test_hermes_benign_memory_tool_write_is_warn_not_high_risk(tmp_path) -> None
     assert status.high_risk_observations == 0
 
 
+def test_hermes_status_separates_current_and_legacy_observation_versions(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    observations_path = tmp_path / "observations.jsonl"
+    observations_path.write_text(
+        json.dumps(
+            {
+                "integration_version": "mf-17",
+                "recorded_at": "2026-06-20T14:59:00Z",
+                "hook_name": "post_tool_call",
+                "tool_name": "memory",
+                "mode": "observe",
+                "blocked_by_firewall": False,
+                "event": {
+                    "operation": "upsert",
+                    "source_authority": "untrusted",
+                    "target_namespace": "hermes:memory:memory",
+                },
+                "scan": {
+                    "level": "high_risk",
+                    "highest_disposition": "review",
+                    "finding_count": 1,
+                    "contradiction_count": 0,
+                    "detector_result": {
+                        "findings": [
+                            {
+                                "risk_category": "provenance_gap",
+                                "detector_name": "provenance-gap-v1",
+                            }
+                        ]
+                    },
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    events = memory_events_from_hermes_tool_call(
+        "memory",
+        {
+            "action": "add",
+            "target": "memory",
+            "content": "Remember that the current adapter dogfood succeeded.",
+        },
+        timestamp="2026-06-20T15:00:00Z",
+        session_id="session-1",
+        tool_call_id="tool-1",
+        turn_id="turn-1",
+    )
+
+    record_hermes_events(
+        events,
+        hook_name="post_tool_call",
+        tool_name="memory",
+        state_dir=tmp_path,
+    )
+    recent = recent_hermes_observations(state_dir=tmp_path, limit=10)
+    status = summarize_hermes_observations(state_dir=tmp_path)
+    report = generate_hermes_report(
+        hermes_home=tmp_path / "hermes",
+        state_dir=tmp_path,
+        limit=10,
+    )
+
+    assert recent.observations[0].recorded_integration_version == (
+        HERMES_INTEGRATION_VERSION
+    )
+    assert recent.observations[0].level == "warn"
+    assert recent.observations[1].recorded_integration_version == "mf-17"
+    assert recent.observations[1].level == "high_risk"
+    assert status.total_observations == 2
+    assert status.current_version_observations == 1
+    assert status.legacy_version_observations == 1
+    assert status.warn_observations == 1
+    assert status.high_risk_observations == 1
+    assert report.summary.current_version_observations == 1
+    assert report.summary.legacy_version_observations == 1
+    Draft202012Validator(hermes_status_schema()).validate(status.to_dict())
+    Draft202012Validator(hermes_observations_schema()).validate(recent.to_dict())
+    Draft202012Validator(hermes_report_schema()).validate(report.to_dict())
+
+
+def test_hermes_report_legacy_only_rows_suggest_fresh_session(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    observations_path = tmp_path / "observations.jsonl"
+    observations_path.write_text(
+        json.dumps(
+            {
+                "integration_version": "mf-16",
+                "recorded_at": "2026-06-20T14:59:00Z",
+                "hook_name": "post_tool_call",
+                "tool_name": "memory",
+                "mode": "observe",
+                "blocked_by_firewall": False,
+                "event": {
+                    "operation": "upsert",
+                    "source_authority": "untrusted",
+                    "target_namespace": "hermes:memory:profile",
+                },
+                "scan": {
+                    "level": "high_risk",
+                    "highest_disposition": "review",
+                    "finding_count": 1,
+                    "contradiction_count": 0,
+                    "detector_result": {
+                        "findings": [
+                            {
+                                "risk_category": "provenance_gap",
+                                "detector_name": "provenance-gap-v1",
+                            }
+                        ]
+                    },
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = generate_hermes_report(
+        hermes_home=tmp_path / "hermes",
+        state_dir=tmp_path,
+        limit=10,
+    )
+    next_steps = " ".join(report.next_steps)
+
+    assert report.summary.current_version_observations == 0
+    assert report.summary.legacy_version_observations == 1
+    assert "fresh Hermes agent session" in next_steps
+    assert "Inspect high-risk local rows" in next_steps
+    Draft202012Validator(hermes_report_schema()).validate(report.to_dict())
+
+
 def test_hermes_recent_observations_are_newest_first_and_redacted(tmp_path) -> None:  # type: ignore[no-untyped-def]
     first = memory_events_from_hermes_tool_call(
         "memory",
@@ -659,7 +789,7 @@ def test_hermes_report_writes_redacted_local_bundle(tmp_path) -> None:  # type: 
     bundle = write_hermes_report_bundle(report, output_dir)
 
     Draft202012Validator(hermes_report_schema()).validate(payload)
-    assert payload["report_version"] == "mf-17"
+    assert payload["report_version"] == "mf-18"
     assert payload["integration_version"] == HERMES_INTEGRATION_VERSION
     assert payload["setup"]["overall_status"] == "ready"
     assert payload["summary"]["high_risk_observations"] == 1
