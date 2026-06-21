@@ -1,12 +1,13 @@
 # Memory Firewall Product Contract
 
-MF-18 adds version-aware Hermes diagnostics over the first
-observe-only Hermes hook alpha, Hermes user-plugin shim installer, redacted
-Hermes observations readout, local Hermes checkup/report, calibrated signal
-levels from real Hermes dogfood, and existing scan, detector, review, proxy, and
-report surfaces while keeping broad real memory-store scanning, provider
-replacement, trusted ledger writes, hosted dashboards, and production
-enforcement claims out of scope.
+MF-18 adds version-aware Hermes diagnostics over the first observe-only Hermes
+hook alpha, Hermes user-plugin shim installer, redacted Hermes observations
+readout, local Hermes checkup/report, calibrated signal levels from real Hermes
+dogfood, and existing scan, detector, review, proxy, and report surfaces while
+keeping broad real memory-store scanning, provider replacement, trusted ledger
+writes, hosted dashboards, and production enforcement claims out of scope. MF-19
+is a documentation and dogfood runbook pass over the same MF-18 runtime/schema
+surface.
 
 ## Category Line
 
@@ -531,6 +532,19 @@ MF-18 adds version-aware Hermes diagnostics:
 - historical rows keep their original recorded scan levels, so MF-18 explains
   old dogfood history without silently recalibrating it.
 
+MF-19 documents the fresh current-version dogfood path:
+
+- install or upgrade the package inside the Python environment that runs Hermes;
+- refresh the user-plugin shim with `memory-firewall hermes install-plugin
+  --force`;
+- enable the plugin with `hermes plugins enable memory-firewall`;
+- start a fresh Hermes oneshot or session that uses the built-in `memory` tool
+  on harmless test text;
+- verify that `current_version_observations` increased and that the newest
+  redacted observation's `recorded_integration_version` matches the top-level
+  `integration_version`;
+- generate `redacted-share.json` as the safe-to-share report artifact.
+
 The Hermes hook alpha is deliberately observe-only. It can be enabled by Hermes
 as a standalone plugin and can run alongside the active Hermes memory provider.
 It does not set `memory.provider`, wrap a provider, replace Mem0/Honcho, or
@@ -596,6 +610,10 @@ policy-quarantine events.
 
 The MF-18 version readout does not migrate, rewrite, delete, or reclassify
 historical diagnostics. It is a reporting aid for local alpha dogfood.
+
+The MF-19 runbook does not add runtime behavior, schema fields, enforcement, or
+provider replacement. It records how to reproduce the alpha path safely with
+harmless test text.
 
 ## Adapter Capability Surface
 
