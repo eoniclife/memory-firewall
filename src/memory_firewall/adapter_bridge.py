@@ -37,6 +37,12 @@ ADAPTER_BRIDGE_REDACTED_EXPORT_FILENAME = "redacted-share.json"
 ADAPTER_BRIDGE_STATE_DIR_MODE = 0o700
 ADAPTER_BRIDGE_STATE_FILE_MODE = 0o600
 _SAFE_TARGET_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_PUBLIC_LABEL_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._:-]{0,63}$")
+_PUBLIC_BRIDGE_VERSION_RE = re.compile(r"^mf-[0-9]{1,4}$")
+_SECRETISH_TOKEN_RE = re.compile(
+    r"(?i)(^sk-[A-Za-z0-9_-]{8,}|^ghp_[A-Za-z0-9_]{12,}|"
+    r"^xox[baprs]-[A-Za-z0-9-]{8,}|token|secret|password|api[_-]?key|bearer)"
+)
 _RFC3339_TIMESTAMP_RE = re.compile(RFC3339_TIMESTAMP_PATTERN)
 _PUBLIC_TARGET_NAMESPACES = frozenset(
     (
@@ -148,10 +154,20 @@ def _safe_target_namespace(value: object) -> str:
     return "redacted-target"
 
 
-def _safe_token(value: object, *, default: str) -> str:
-    if isinstance(value, str) and _SAFE_TARGET_RE.fullmatch(value):
+def _safe_public_label(value: object, *, default: str) -> str:
+    if (
+        isinstance(value, str)
+        and _PUBLIC_LABEL_RE.fullmatch(value)
+        and not _SECRETISH_TOKEN_RE.search(value)
+    ):
         return value
     return default
+
+
+def _safe_bridge_version(value: object) -> str:
+    if isinstance(value, str) and _PUBLIC_BRIDGE_VERSION_RE.fullmatch(value):
+        return value
+    return "unknown-version"
 
 
 def _safe_recorded_at(value: object) -> str:
@@ -763,13 +779,13 @@ def _summary_from_row(
     findings = _findings_from_scan_payload(scan_payload)
     return AdapterBridgeObservationSummary(
         bridge_version=ADAPTER_BRIDGE_VERSION,
-        recorded_bridge_version=_safe_token(
-            row.get("bridge_version"),
-            default="unknown-version",
-        ),
+        recorded_bridge_version=_safe_bridge_version(row.get("bridge_version")),
         row_number=row_number,
         recorded_at=_safe_recorded_at(row.get("recorded_at")),
-        adapter_name=_safe_token(row.get("adapter_name"), default="unknown-adapter"),
+        adapter_name=_safe_public_label(
+            row.get("adapter_name"),
+            default="unknown-adapter",
+        ),
         event_ref=f"adapter-observation-row-{row_number}",
         operation=_enum_value(
             event_payload.get("operation"),
@@ -907,9 +923,11 @@ def _adapter_report_next_steps(
             "memory` from the agent or script that is about to write memory."
         )
     elif observations.high_risk_observations > 0:
+        inspection_limit = max(limit, observations.total_observations)
         steps.append(
             "Inspect high-risk local rows with "
-            f"`memory-firewall adapter observations --limit {limit}` before "
+            f"`memory-firewall adapter observations --limit {inspection_limit}` "
+            "before "
             "trusting those remembered facts."
         )
     elif observations.warn_observations > 0:
@@ -936,6 +954,11 @@ def generate_adapter_report(
         raise ValueError("limit must be a positive integer")
     output_dir = _resolve_state_dir(state_dir)
     observations = recent_adapter_observations(state_dir=output_dir, limit=limit)
+    all_rows = load_adapter_observations(state_dir=output_dir)
+    all_summaries = tuple(
+        _summary_from_row(row, row_number=index)
+        for index, row in enumerate(all_rows, start=1)
+    )
     setup = _adapter_report_setup(state_dir=output_dir, observations=observations)
     summary = AdapterBridgeReportSummary(
         total_observations=observations.total_observations,
@@ -954,13 +977,13 @@ def generate_adapter_report(
         setup=setup,
         summary=summary,
         observations=observations,
-        level_counts=_count_observation_fields(observations.observations, "level"),
+        level_counts=_count_observation_fields(all_summaries, "level"),
         risk_category_counts=_count_observation_fields(
-            observations.observations,
+            all_summaries,
             "risk_categories",
         ),
         detector_counts=_count_observation_fields(
-            observations.observations,
+            all_summaries,
             "detector_names",
         ),
         next_steps=_adapter_report_next_steps(
@@ -970,6 +993,7 @@ def generate_adapter_report(
         limitations=(
             "Local static generic adapter diagnostics report only.",
             "Observation rows are redacted handles; raw and proposed memory content are not included.",
+            "Aggregate level, risk, and detector counts cover all loaded generic adapter observations; the recent rows table obeys the requested limit.",
             "The generic adapter bridge remains observe-only and does not suppress native memory writes.",
             "High-risk findings are deterministic integrity signals, not proof of objective truth or adversarial intent.",
             "The redacted share export removes local filesystem paths by default.",
@@ -1061,11 +1085,11 @@ def render_adapter_report_html(report: AdapterBridgeReportResult) -> str:
   <ul class="grid">
     {_render_counter_list(report.summary.to_dict())}
   </ul>
-  <h2>Level Counts</h2>
+  <h2>All-History Level Counts</h2>
   <ul class="grid">
     {_render_counter_list(report.level_counts or {"none": 0})}
   </ul>
-  <h2>Risk Categories</h2>
+  <h2>All-History Risk Categories</h2>
   <ul class="grid">
     {_render_counter_list(report.risk_category_counts or {"none": 0})}
   </ul>

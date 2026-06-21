@@ -12,8 +12,8 @@ surface into a local static report surface:
   report over existing generic adapter observations;
 - report bundle files are `report.json`, `index.html`, and
   `redacted-share.json`;
-- report JSON includes setup status, observation counts, recent redacted rows,
-  level/risk/detector counts, next steps, and limitations;
+- report JSON includes setup status, all-history observation and
+  level/risk/detector counts, recent redacted rows, next steps, and limitations;
 - redacted share export removes local filesystem paths and keeps raw candidate
   content and raw-derived event ids out of the share artifact;
 - `memory-firewall schema adapter-report` and the schema bundle expose the new
@@ -52,6 +52,28 @@ Check especially:
 - compatibility: existing adapter observe/observations, Hermes, demo report, and
   schema commands still work.
 
+## Initial Review Findings
+
+Independent reviewer James rejected initial head
+`0a58e6ef19ff2a7a61b656a5a2ff67f89263daf4` with:
+
+- P2: token-shaped `adapter_name` / `recorded_bridge_version` metadata could
+  leak into `redacted-share.json`;
+- P3: report aggregate counts were computed over the returned `--limit` window,
+  so an older high-risk row could make the report exit non-zero while the report
+  displayed only PASS-level counts.
+
+The fix-pass:
+
+- added stricter public scrubbing for adapter labels and recorded bridge
+  versions;
+- added redaction regressions for token-shaped adapter names;
+- made report level/risk/detector counts all-history counts while the row table
+  remains limited;
+- changed high-risk next-step guidance to use a limit large enough to reveal the
+  full local history;
+- documented the all-history count / limited-row split.
+
 ## Local Gates
 
 Passed before opening the PR:
@@ -77,8 +99,25 @@ Passed before opening the PR:
 - installed-wheel smoke from the built `0.1.0.dev22` wheel for `doctor`,
   `schema adapter-report`, `adapter observe-memory`, and `adapter report`.
 
+Passed again after the fix-pass:
+
+- `uv run --python 3.12 --extra dev pytest tests/test_adapter_bridge.py tests/test_cli.py tests/test_schema_and_taxonomy.py -q`
+- `uv run --python 3.12 --extra dev pytest -q`
+- `uv run --python 3.12 --extra dev python -m compileall -q src tests`
+- `uv run --python 3.10 --extra dev mypy src tests`
+- `uv run --python 3.11 --extra dev mypy src tests`
+- `uv run --python 3.12 --extra dev mypy src tests`
+- `git diff --check`
+- doctor/schema/claims smokes;
+- temp CLI smoke for token-shaped adapter-name redaction in
+  `adapter observe-memory` + `adapter report`;
+- `uv build --out-dir <temp-dist-dir>`
+- `uv run --python 3.12 --extra dev twine check <temp-dist-dir>/*`
+- installed-wheel smoke from the fix-pass `0.1.0.dev22` wheel for `doctor`,
+  `schema adapter-report`, `adapter observe-memory`, and `adapter report`.
+
 Pending after PR creation:
 
-- independent exact-head review;
-- PR CI green on the exact head SHA;
+- independent exact-head re-review of the fix-pass head;
+- PR CI green on the fix-pass exact head SHA;
 - main CI green after merge.

@@ -376,11 +376,11 @@ support for Mem0, Honcho, GBrain, LangChain, Letta, Zep, or vector databases.
 MF-22 adds `memory-firewall adapter report --out <dir> --json|--open`. The
 command writes a local redacted report over the same generic adapter diagnostics:
 `report.json`, `index.html`, and `redacted-share.json`. The report includes
-setup status, observation counts, level/risk/detector summaries, recent
-redacted rows, next steps, and limitations. The share export redacts local paths
-and does not include raw candidate memory text or raw event ids. It is a local
-alpha readout, not a hosted dashboard, telemetry service, provider wrapper,
-approval ledger, or scanner for existing memory stores.
+setup status, all-history observation and level/risk/detector counts, a limited
+recent redacted-row table, next steps, and limitations. The share export redacts
+local paths and does not include raw candidate memory text or raw event ids. It
+is a local alpha readout, not a hosted dashboard, telemetry service, provider
+wrapper, approval ledger, or scanner for existing memory stores.
 
 ## Relationship To Agent Memory Contracts
 

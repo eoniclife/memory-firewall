@@ -154,7 +154,7 @@ private orchestration layer
 - local generic adapter report files `report.json`, `index.html`, and
   `redacted-share.json`;
 - redacted generic adapter report rows with local observation handles, setup
-  status, detector/risk counts, next steps, and limitations;
+  status, all-history detector/risk counts, next steps, and limitations;
 - machine-readable `adapter-observe-result`, `adapter-observations`, and
   `adapter-report` schemas;
 - local configuration of the generic adapter diagnostics directory via
@@ -712,11 +712,12 @@ The generic adapter report writes:
 - `redacted-share.json`: safer share artifact with local filesystem paths
   replaced by redacted placeholders.
 
-The report includes setup status, observation counts, level/risk/detector
-summaries, recent redacted rows, next steps, and limitations. It returns a
-non-zero CLI exit code when all-history generic adapter diagnostics include
-high-risk rows. WARN-only diagnostics, including malformed JSONL diagnostic
-rows, remain review signals and do not by themselves make the report fail.
+The report includes setup status, all-history observation and
+level/risk/detector counts, a limited recent redacted-row table, next steps, and
+limitations. It returns a non-zero CLI exit code when all-history generic
+adapter diagnostics include high-risk rows. WARN-only diagnostics, including
+malformed JSONL diagnostic rows, remain review signals and do not by themselves
+make the report fail.
 
 The generic bridge is deliberately observe-only. It does not discover or scan
 an existing store, replace a provider, suppress native writes, approve memory,
