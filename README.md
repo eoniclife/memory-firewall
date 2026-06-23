@@ -12,15 +12,89 @@ Memory Firewall is a small public tool surface for asking a narrower question:
 
 > What exactly has my agent remembered, and why am I letting it trust that?
 
+## Quickstart
+
+From a checkout:
+
+```bash
+git clone https://github.com/eoniclife/memory-firewall.git
+cd memory-firewall
+
+uv run --python 3.12 --extra dev memory-firewall doctor --json
+uv run --python 3.12 --extra dev memory-firewall diagnostic sqlite-write-through --workspace ./mf-sqlite-diagnostic --json
+open ./mf-sqlite-diagnostic/report/index.html
+uv run --python 3.12 --extra dev memory-firewall lineage report examples/authority_boundary_lineage.json --json || true
+uv run --python 3.12 --extra dev memory-firewall report demo --out ./memory-integrity-report --json
+```
+
+The SQLite diagnostic writes three candidate memories into a local caller-owned
+SQLite store through `observe_then_write_memory(...)`. Native writes still
+happen; Memory Firewall records redacted observations beside them and writes a
+local HTML report. The point is not that SQLite is special. The point is that a
+memory write boundary can preserve application behavior while making
+provenance, risk, and review state inspectable.
+
+The lineage command is expected to return exit code `1` for the included
+authority-boundary example. That is the diagnostic: a low-authority candidate
+was persisted, retrieved, and used downstream while carrying only a WARN-level
+Memory Firewall disposition, so the report surfaces
+`downstream_candidate_not_escalated` instead of letting the packet look clean.
+
+If you only want a package smoke without cloning:
+
+```bash
+uv tool run --python 3.12 \
+  --from "git+https://github.com/eoniclife/memory-firewall.git" \
+  memory-firewall doctor --json
+
+uv tool run --python 3.12 \
+  --from "git+https://github.com/eoniclife/memory-firewall.git" \
+  memory-firewall demo poison --json
+
+uv tool run --python 3.12 \
+  --from "git+https://github.com/eoniclife/memory-firewall.git" \
+  memory-firewall diagnostic sqlite-write-through --workspace ./mf-sqlite-diagnostic --json
+```
+
+## What To Look For
+
+- `demo poison` shows a naive memory store accepting a forged durable memory
+  after a signed source-of-record memory.
+- `diagnostic sqlite-write-through` shows an installable local memory writer
+  path where native writes continue, but redacted diagnostics and report files
+  reveal which writes need attention.
+- `lineage report examples/authority_boundary_lineage.json --json` shows a
+  source-stripped authority-changing candidate crossing extraction,
+  persistence, retrieval, and downstream use.
+- `report demo` writes local `report.json`, `index.html`, and
+  `redacted-share.json` files without starting a hosted service.
+
+These are deterministic local diagnostics. They are not a claim that Mem0,
+GBrain, Hermes, or any other live memory provider is currently exploitable.
+
+## What This Proves
+
+- Agent memory needs an explicit boundary between native persistence and trusted
+  downstream use.
+- A local diagnostic can keep existing memory writes working while producing
+  redacted, reviewable integrity evidence.
+- A downstream-used memory candidate can be treated differently from a merely
+  extracted candidate once lineage is visible.
+
+## What It Does Not Prove
+
+- It does not prove that any named live provider is vulnerable.
+- It does not prevent writes in your production memory backend.
+- It does not verify objective truth or replace a reducer/review process.
+- It does not publish private validation packets or hosted-service evidence.
+
 ## Status
 
-This repository's runtime/schema surface is MF-23: a generic Python
-write-through helper for caller-owned memory writes, plus a local generic
-adapter report over one supplied-candidate diagnostics stream, the first
-observe-only Hermes hook alpha, Hermes user-plugin shim installer, redacted
-recent-observations readout, local Hermes checkup/report, calibrated signal
-levels from real Hermes dogfood, and version-aware diagnostics over the existing
-Memory Firewall scan/detector/report surfaces.
+This repository's current public package surface is `0.1.0.dev28`. The schema
+bundle still includes the MF-23 adapter/event surfaces; the newest runtime
+inspection surface is MF-27 stage-aware lineage; MF-28 adds an installable
+SQLite write-through diagnostic, the public authority-boundary example, and a
+launch-ready first-run path.
 
 Implemented now:
 
@@ -62,10 +136,17 @@ Implemented now:
 - local redacted `memory-firewall adapter report`;
 - generic Python `observe_then_write_memory(...)` helper for caller-owned
   memory write functions;
+- installable local SQLite write-through diagnostic over a caller-owned memory
+  writer;
 - adapter capability report model and schema;
 - a built-in fake adapter conformance probe;
+- stage-aware lineage report over supplied source/candidate/persisted/retrieved
+  evidence packets;
+- `memory-firewall lineage report <path> --json`;
+- `examples/authority_boundary_lineage.json` as a public authority-boundary
+  diagnostic fixture;
 - machine-readable event/finding/detector/state-analysis/scan/review/demo/proxy/report/adapter/Hermes
-  checkup, report, status, and observations schemas;
+  checkup, report, status, observations, and lineage schemas;
 - risk taxonomy and claim budget;
 - CLI commands for `doctor`, `schema`, `risks`, `claims`, `policy`, `detect`,
   `analyze`, `scan`, `watch`, `review`, `demo`, `proxy`, `report`, `adapter`,
@@ -82,7 +163,7 @@ Not implemented yet:
   generic one-candidate local bridge;
 - enforce mode outside the built-in reference substrate.
 
-## Install For Development
+## Command Reference
 
 ```bash
 uv run --python 3.12 --extra dev memory-firewall doctor --json
@@ -109,6 +190,7 @@ uv run --python 3.12 --extra dev memory-firewall schema hermes-checkup
 uv run --python 3.12 --extra dev memory-firewall schema hermes-report
 uv run --python 3.12 --extra dev memory-firewall schema hermes-status
 uv run --python 3.12 --extra dev memory-firewall schema hermes-observations
+uv run --python 3.12 --extra dev memory-firewall schema lineage-report
 uv run --python 3.12 --extra dev memory-firewall risks
 uv run --python 3.12 --extra dev memory-firewall claims
 uv run --python 3.12 --extra dev memory-firewall policy --json
@@ -126,6 +208,7 @@ uv run --python 3.12 --extra dev memory-firewall proxy reference --mode observe 
 uv run --python 3.12 --extra dev memory-firewall proxy reference --mode overlay --json
 uv run --python 3.12 --extra dev memory-firewall proxy reference --mode enforce --json
 uv run --python 3.12 --extra dev memory-firewall report demo --out ./memory-integrity-report --json
+uv run --python 3.12 --extra dev memory-firewall diagnostic sqlite-write-through --workspace ./mf-sqlite-diagnostic --json
 uv run --python 3.12 --extra dev memory-firewall adapter observe-memory --content "Remember that the user prefers local tools." --target profile --source-authority untrusted --json
 uv run --python 3.12 --extra dev memory-firewall adapter observations --limit 20 --json
 uv run --python 3.12 --extra dev memory-firewall adapter report --out ./adapter-memory-report --json
@@ -136,7 +219,22 @@ uv run --python 3.12 --extra dev memory-firewall hermes status --json
 uv run --python 3.12 --extra dev memory-firewall hermes observations --limit 20 --json
 uv run --python 3.12 --extra dev memory-firewall hermes observations --current-version-only --limit 20 --json
 uv run --python 3.12 --extra dev memory-firewall conformance demo --json
+uv run --python 3.12 --extra dev memory-firewall lineage report examples/authority_boundary_lineage.json --json
 ```
+
+## Authority Boundary Example
+
+`examples/authority_boundary_lineage.json` is a synthetic evidence packet for a
+host app that forwarded low-authority tool output into memory. The candidate
+changes who may approve production database writes, is persisted as a provider
+record, is retrieved in a fresh context, and is marked as used downstream.
+Memory Firewall only had a WARN-level disposition for that exact candidate, so
+the lineage report returns `1` and emits `downstream_candidate_not_escalated`.
+
+That is the boundary the project is about: durable agent memory needs custody,
+authority, and downstream-use checks, not only extraction and retrieval. The
+fixture is deliberately portable and synthetic; it is not a public claim that a
+named provider has a live vulnerability.
 
 ## Generic Adapter Bridge
 
@@ -177,6 +275,7 @@ print(result.to_dict()["observation"]["level"])
 For a copyable end-to-end example using a caller-owned SQLite writer:
 
 ```bash
+memory-firewall diagnostic sqlite-write-through --workspace ./mf-sqlite-demo --json
 python examples/generic_write_through_sqlite.py --workspace ./mf-sqlite-demo
 ```
 
@@ -423,6 +522,22 @@ writer return value, and returns redacted writer status plus the redacted
 observation summary. It is install ergonomics for custom agents, not a
 framework adapter, provider wrapper, write suppressor, approval gate, or trusted
 ledger.
+
+MF-28 adds `memory-firewall diagnostic sqlite-write-through --workspace <dir>
+--json`, an installable local diagnostic over the same write-through helper. It
+creates a marker-protected workspace with a native SQLite memory table, adapter
+diagnostics, and a local redacted report. It is still not live provider support,
+write suppression, prevention, or production enforcement.
+
+MF-27 adds `memory-firewall lineage report <path> --json`. The report links
+source events, extracted candidates, Memory Firewall scans, persisted memories,
+and retrieved memories, then flags weak links or downstream-used candidates
+that were not candidate-level escalated.
+
+MF-28 also adds the public authority-boundary first-run packet in
+`examples/authority_boundary_lineage.json` and updates the README/product
+contract so the repository can be linked as a claim-safe artifact. It does not
+add a live provider adapter, release tag, or public vulnerability claim.
 
 ## Relationship To Agent Memory Contracts
 

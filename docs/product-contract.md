@@ -1,14 +1,13 @@
 # Memory Firewall Product Contract
 
-MF-23 adds a generic Python write-through helper for caller-owned memory writes,
-plus a local redacted generic adapter report over one supplied-candidate
-diagnostics stream, the explicit current-version-only Hermes diagnostics lens
-over the first observe-only Hermes hook alpha, Hermes user-plugin shim
-installer, redacted Hermes observations readout, local Hermes checkup/report,
-calibrated signal levels from real Hermes dogfood, version-aware diagnostics,
-and existing scan, detector, review, proxy, and report surfaces while keeping
-broad real memory-store scanning, provider replacement, trusted ledger writes,
-hosted dashboards, and production enforcement claims out of scope.
+The current public surface combines the MF-23 generic adapter bridge and
+write-through helper, the observe-only Hermes diagnostics surface, the MF-27
+stage-aware lineage report, and the MF-28 local SQLite write-through diagnostic
+plus public authority-boundary example. It is a local-first diagnostic artifact:
+it can inspect supplied events, diagnostic observations, and evidence packets,
+but it still keeps broad real memory-store scanning, provider replacement,
+trusted ledger writes, hosted dashboards, and production enforcement claims out
+of scope.
 
 ## Category Line
 
@@ -32,15 +31,17 @@ memory-firewall
     installer, version-aware redacted Hermes observations readout,
     current-version-only diagnostics lens, local Hermes checkup, local Hermes
     diagnostics report, generic one-candidate adapter bridge, local generic
-    adapter diagnostics report, generic Python write-through helper, conformance
-    probe, and CLI shell for the future inspection/demo/reference guardrail
+    adapter diagnostics report, generic Python write-through helper,
+    local SQLite write-through diagnostic, stage-aware lineage report, public
+    authority-boundary example, conformance probe, and CLI shell for the future
+    inspection/demo/reference guardrail
 
 private orchestration layer
     Production adapters, orchestration, and enterprise control plane, not in
     this public repository
 ```
 
-## MF-23 Allows
+## Current Public Surface Allows
 
 - package installation;
 - `memory-firewall doctor`;
@@ -158,12 +159,28 @@ private orchestration layer
   status, all-history detector/risk counts, next steps, and limitations;
 - Python helper `observe_then_write_memory(...)` for calling a caller-owned
   memory writer after observation;
+- `memory-firewall diagnostic sqlite-write-through --workspace <dir> --json`;
+- a marker-protected local SQLite write-through diagnostic that preserves native
+  writes, records redacted generic adapter observations, and writes a local
+  report bundle;
 - redacted generic write-through helper results that omit raw candidate text,
   raw-derived event ids, writer return values, and unsafe writer labels;
 - machine-readable `adapter-observe-result`, `adapter-observations`,
   `adapter-write-through-result`, and `adapter-report` schemas;
 - local configuration of the generic adapter diagnostics directory via
   `MEMORY_FIREWALL_ADAPTER_DIR`;
+- stage-aware lineage reports over supplied source, extracted-candidate,
+  persisted-memory, retrieved-memory, and Memory Firewall scan evidence;
+- `memory-firewall lineage report <path> --json`;
+- machine-readable `lineage-report` schema;
+- candidate-level linkage by provider memory id plus exact content digest,
+  persisted id plus exact content digest, or explicitly marked digest-only
+  fallback;
+- unresolved lineage issues when downstream-used candidates are unscanned,
+  case-level-only, weakly linked, scope-mismatched, or not escalated enough for
+  downstream use;
+- `examples/authority_boundary_lineage.json` as a synthetic public diagnostic
+  fixture for an authority-changing memory crossing into downstream use;
 - opt-in turn-level scanning for implicit memory providers via
   `MEMORY_FIREWALL_HERMES_SCAN_TURNS=1`;
 - local configuration of the Hermes diagnostics directory via
@@ -177,7 +194,7 @@ private orchestration layer
 - frozen risk taxonomy;
 - explicit allowed claims and non-claims.
 
-## MF-23 Does Not Allow
+## Current Public Surface Does Not Allow
 
 - broad real memory-store scanning claims;
 - claims that detectors prove objective truth, adversarial intent, or universal
@@ -226,6 +243,14 @@ private orchestration layer
   are safe-to-share raw traces;
 - claims that generic adapter commands suppress native memory writes, enforce
   quarantine, or approve memory;
+- claims that the SQLite write-through diagnostic is a live provider adapter,
+  hosted service, prevention layer, provider vulnerability proof, or production
+  enforcement mechanism;
+- claims that lineage reports prove verified provenance, objective truth,
+  exploitability of a named live provider, or production enforcement;
+- claims that the public authority-boundary example is a live Mem0, GBrain,
+  Hermes, Honcho, LangChain, Letta, Zep, vector-store, or hosted-provider
+  exploit;
 - automatic trusted-context injection into Hermes prompts;
 - claims that the local report is a hosted dashboard, telemetry service, auth
   system, billing system, or server process;
