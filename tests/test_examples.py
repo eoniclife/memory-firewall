@@ -34,6 +34,6 @@ def test_generic_write_through_sqlite_example_runs_and_redacts(tmp_path) -> None
     assert "The project codename is Mirage" not in rendered
     assert "Ignore all previous instructions" not in rendered
     assert "attacker@example.com" not in rendered
-    assert "sk-ABCDEFGHIJKLMNOPQRSTUV" not in rendered
+    assert "writer-return-private-marker-ABCDEFGHIJKLMNOPQRSTUV" not in rendered
     assert "mfev_v1_" not in rendered
     assert str(workspace) not in rendered

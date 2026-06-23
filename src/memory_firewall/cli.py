@@ -21,6 +21,7 @@ from .analysis import MemoryStateAssertion, analyze_memory_state
 from .claim_budget import claim_budget
 from .conformance import run_adapter_conformance
 from .detectors import default_detector_pack, run_detectors
+from .diagnostic import DiagnosticWorkspaceError, run_sqlite_write_through_diagnostic
 from .demo import run_poison_demo
 from .doctor import doctor_report
 from .hermes import (
@@ -479,6 +480,31 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Open the generated local HTML report in the default browser.",
     )
     adapter_report_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    diagnostic_parser = subparsers.add_parser(
+        "diagnostic",
+        help="Run local first-run diagnostics.",
+    )
+    diagnostic_subparsers = diagnostic_parser.add_subparsers(
+        dest="diagnostic_command",
+        required=True,
+    )
+    sqlite_diagnostic_parser = diagnostic_subparsers.add_parser(
+        "sqlite-write-through",
+        help="Run a local SQLite write-through memory diagnostic.",
+    )
+    sqlite_diagnostic_parser.add_argument(
+        "--workspace",
+        required=True,
+        help="Owned directory for the native SQLite DB, diagnostics, and report.",
+    )
+    sqlite_diagnostic_parser.add_argument(
+        "--open",
+        action="store_true",
+        dest="open_report",
+        help="Open the generated local HTML report in the default browser.",
+    )
+    sqlite_diagnostic_parser.add_argument("--json", action="store_true", dest="as_json")
 
     hermes_parser = subparsers.add_parser(
         "hermes",
@@ -1226,6 +1252,32 @@ def _run_adapter_report(
     return 1 if report.summary.high_risk_observations > 0 else 0
 
 
+def _run_sqlite_write_through_diagnostic(
+    workspace: str,
+    open_report: bool,
+    as_json: bool,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    try:
+        summary = run_sqlite_write_through_diagnostic(Path(workspace))
+    except DiagnosticWorkspaceError as exc:
+        print(str(exc), file=stderr)
+        return 2
+    if open_report:
+        webbrowser.open(Path(str(summary["report_files"]["html"])).resolve().as_uri())
+    if as_json:
+        _print_json(summary, stdout)
+    else:
+        print(f"{summary['diagnostic_version']}: SQLite write-through diagnostic", file=stdout)
+        print(f"- workspace: {summary['workspace']}", file=stdout)
+        print(f"- native rows: {summary['native_rows']}", file=stdout)
+        print(f"- attention required: {str(summary['attention_required']).lower()}", file=stdout)
+        print(f"- report html: {summary['report_files']['html']}", file=stdout)
+        print("- observe-only: true", file=stdout)
+    return 0
+
+
 def _run_hermes_status(
     state_dir: str | None,
     as_json: bool,
@@ -1663,6 +1715,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sys.stdout,
             )
         parser.error(f"unknown adapter command: {adapter_command}")
+    if args.command == "diagnostic":
+        diagnostic_command = str(args.diagnostic_command)
+        if diagnostic_command == "sqlite-write-through":
+            return _run_sqlite_write_through_diagnostic(
+                str(args.workspace),
+                bool(args.open_report),
+                bool(args.as_json),
+                sys.stdout,
+                sys.stderr,
+            )
+        parser.error(f"unknown diagnostic command: {diagnostic_command}")
     if args.command == "hermes":
         hermes_command = str(args.hermes_command)
         if hermes_command == "status":

@@ -3,6 +3,7 @@
 .ruff_cache/
 .mypy_cache/
 .venv/
+.omo/
 build/
 dist/
 *.egg-info/

@@ -68,6 +68,12 @@ from .detectors import (
     default_detector_pack,
     run_detectors,
 )
+from .diagnostic import (
+    SQLITE_DIAGNOSTIC_MARKER_FILENAME,
+    SQLITE_DIAGNOSTIC_VERSION,
+    DiagnosticWorkspaceError,
+    run_sqlite_write_through_diagnostic,
+)
 from .demo import (
     POISON_DEMO_SOURCE,
     POISON_DEMO_VERSION,
@@ -314,6 +320,7 @@ __all__ = [
     "DETECTOR_PACK_NAME",
     "DETECTOR_PACK_VERSION",
     "DETECTOR_VERSION",
+    "DiagnosticWorkspaceError",
     "DEFAULT_REVIEWER",
     "DetectorDefinition",
     "DetectorPack",
@@ -410,6 +417,8 @@ __all__ = [
     "SCAN_EXIT_REVIEW_REQUIRED",
     "SCAN_ISSUE_ID_PREFIX",
     "SCAN_VERSION",
+    "SQLITE_DIAGNOSTIC_MARKER_FILENAME",
+    "SQLITE_DIAGNOSTIC_VERSION",
     "DEFAULT_SCAN_CONTEXT_ASSERTIONS",
     "ScanEventLevel",
     "ScanEventResult",
@@ -506,6 +515,7 @@ __all__ = [
     "render_hermes_report_html",
     "run_adapter_conformance",
     "run_detectors",
+    "run_sqlite_write_through_diagnostic",
     "generate_demo_report",
     "run_poison_demo",
     "run_reference_proxy",
